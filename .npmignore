@@ -1,0 +1,8 @@
+node_modules
+config.json
+*.log
+.git
+.gitignore
+.npmignore
+tsconfig.json
+.pi-rtk-optimizer-check.mjs

@@ -1,0 +1,8 @@
+node_modules/
+*.log
+.DS_Store
+dist/
+coverage/
+config.json
+*.tmp
+.pi-rtk-optimizer-check.mjs

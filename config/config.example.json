@@ -1,0 +1,35 @@
+{
+  "enabled": true,
+  "mode": "rewrite",
+  "guardWhenRtkMissing": true,
+  "showRewriteNotifications": true,
+  "rewriteGitGithub": true,
+  "rewriteFilesystem": true,
+  "rewriteRust": true,
+  "rewriteJavaScript": true,
+  "rewritePython": true,
+  "rewriteGo": true,
+  "rewriteContainers": true,
+  "rewriteNetwork": true,
+  "rewritePackageManagers": true,
+  "outputCompaction": {
+    "enabled": true,
+    "stripAnsi": true,
+    "sourceCodeFilteringEnabled": true,
+    "truncate": {
+      "enabled": true,
+      "maxChars": 12000
+    },
+    "sourceCodeFiltering": "minimal",
+    "smartTruncate": {
+      "enabled": true,
+      "maxLines": 220
+    },
+    "aggregateTestOutput": true,
+    "filterBuildOutput": true,
+    "compactGitOutput": true,
+    "aggregateLinterOutput": true,
+    "groupSearchOutput": true,
+    "trackSavings": true
+  }
+}
