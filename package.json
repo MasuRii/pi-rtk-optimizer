@@ -1,6 +1,6 @@
 {
   "name": "pi-rtk-optimizer",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Pi extension that optimizes RTK command rewriting and tool output compaction for the coding agent.",
   "type": "module",
   "main": "./index.ts",

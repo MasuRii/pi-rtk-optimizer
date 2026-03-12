@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-12
+
+### Added
+- Command rewrite bypass system with safety patterns for dangerous operations
+- `shouldBypassWholeCommandRewrite` to prevent rewriting of unsafe compound commands
+- Bypass patterns for `find`, `grep`, `rg`, `ls` with action detection
+- Inline command flag detection for `bash`, `powershell`, and `cmd` shells
+- `path-utils` module for cross-technique path handling
+- Comprehensive test coverage with shared test helpers
+- Additional coverage tests for edge cases
+
+### Changed
+- Extended `rewrite-bypass` with bypass patterns for interactive container shells
+- Improved command rewriter test coverage
+- Removed deprecated `compat-commands` module
+
 ## [0.3.3] - 2026-03-07
 
 ### Added
