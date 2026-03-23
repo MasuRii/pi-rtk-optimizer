@@ -12,8 +12,10 @@ import { EXTENSION_NAME } from "./constants.js";
 import { clearOutputMetrics, getOutputMetricsSummary } from "./output-metrics.js";
 import { compactToolResult, type ToolResultCompactionMetadata } from "./output-compactor.js";
 import { toRecord } from "./record-utils.js";
+import { applyRtkCommandEnvironment } from "./rtk-command-environment.js";
 import { applyRewrittenCommandShellSafetyFixups } from "./rewrite-pipeline-safety.js";
 import { shouldRequireRtkAvailabilityForCommandHandling, shouldSkipCommandHandlingWhenRtkMissing } from "./runtime-guard.js";
+import { sanitizeStreamingBashExecutionResult } from "./tool-execution-sanitizer.js";
 import type { RtkIntegrationConfig, RuntimeStatus } from "./types.js";
 import { applyWindowsBashCompatibilityFixes } from "./windows-command-helpers.js";
 
@@ -92,6 +94,7 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 	let runtimeStatus: RuntimeStatus = { rtkAvailable: false };
 	const warnedMessages = createBoundedNoticeTracker(100);
 	const suggestionNotices = createBoundedNoticeTracker(200);
+	const activeBashCommands = new Map<string, string>();
 	let missingRtkWarningShown = false;
 
 	const formatRewriteNotice = (originalCommand: string, rewrittenCommand: string): string => {
@@ -113,6 +116,41 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 		if (ctx.hasUI) {
 			ctx.ui.notify(message, level);
 		}
+	};
+
+	const clearTrackedBashCommands = (): void => {
+		activeBashCommands.clear();
+	};
+
+	const trackBashCommand = (toolCallId: unknown, args: unknown): void => {
+		if (typeof toolCallId !== "string") {
+			return;
+		}
+
+		const argsRecord = toRecord(args);
+		const command = typeof argsRecord.command === "string" ? argsRecord.command.trim() : "";
+		if (!command) {
+			activeBashCommands.delete(toolCallId);
+			return;
+		}
+
+		activeBashCommands.set(toolCallId, command);
+	};
+
+	const getTrackedBashCommand = (toolCallId: unknown): string | undefined => {
+		if (typeof toolCallId !== "string") {
+			return undefined;
+		}
+
+		return activeBashCommands.get(toolCallId);
+	};
+
+	const forgetTrackedBashCommand = (toolCallId: unknown): void => {
+		if (typeof toolCallId !== "string") {
+			return;
+		}
+
+		activeBashCommands.delete(toolCallId);
 	};
 
 	const refreshConfig = async (ctx?: ExtensionContext | ExtensionCommandContext): Promise<void> => {
@@ -218,6 +256,7 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 	pi.on("session_start", async (_event, ctx) => {
 		warnedMessages.reset();
 		suggestionNotices.reset();
+		clearTrackedBashCommands();
 		missingRtkWarningShown = false;
 		await refreshConfig(ctx);
 		maybeWarnRtkMissing(ctx);
@@ -226,9 +265,59 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 	pi.on("session_switch", async (_event, ctx) => {
 		warnedMessages.reset();
 		suggestionNotices.reset();
+		clearTrackedBashCommands();
 		missingRtkWarningShown = false;
 		await refreshConfig(ctx);
 		maybeWarnRtkMissing(ctx);
+	});
+
+	pi.on("agent_end", async () => {
+		clearTrackedBashCommands();
+	});
+
+	pi.on("tool_execution_start", async (event) => {
+		if (!config.enabled || !config.outputCompaction.enabled) {
+			return;
+		}
+
+		const eventRecord = toRecord(event);
+		if (eventRecord.toolName !== "bash") {
+			return;
+		}
+
+		trackBashCommand(eventRecord.toolCallId, eventRecord.args);
+	});
+
+	pi.on("tool_execution_update", async (event) => {
+		if (!config.enabled || !config.outputCompaction.enabled) {
+			return;
+		}
+
+		const eventRecord = toRecord(event);
+		if (eventRecord.toolName !== "bash") {
+			return;
+		}
+
+		trackBashCommand(eventRecord.toolCallId, eventRecord.args);
+		sanitizeStreamingBashExecutionResult(
+			eventRecord.partialResult,
+			getTrackedBashCommand(eventRecord.toolCallId),
+		);
+	});
+
+	pi.on("tool_execution_end", async (event) => {
+		const eventRecord = toRecord(event);
+		if (eventRecord.toolName !== "bash") {
+			return;
+		}
+
+		try {
+			if (config.enabled && config.outputCompaction.enabled) {
+				sanitizeStreamingBashExecutionResult(eventRecord.result, getTrackedBashCommand(eventRecord.toolCallId));
+			}
+		} finally {
+			forgetTrackedBashCommand(eventRecord.toolCallId);
+		}
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
@@ -274,7 +363,8 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 			if (config.showRewriteNotifications && ctx.hasUI) {
 				ctx.ui.notify(formatRewriteNotice(decision.originalCommand, decision.rewrittenCommand), "info");
 			}
-			event.input.command = applyRewrittenCommandShellSafetyFixups(decision.rewrittenCommand);
+			const safeRewrittenCommand = applyRewrittenCommandShellSafetyFixups(decision.rewrittenCommand);
+			event.input.command = applyRtkCommandEnvironment(safeRewrittenCommand);
 			return {};
 		}
 
