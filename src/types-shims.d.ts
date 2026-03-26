@@ -182,6 +182,10 @@ declare module "node:path" {
 	export const sep: string;
 }
 
+declare module "node:process" {
+	export const env: string[];
+}
+
 declare module "node:fs" {
 	export function existsSync(path: string): boolean;
 	export function mkdirSync(path: string, options?: { recursive?: boolean }): void;

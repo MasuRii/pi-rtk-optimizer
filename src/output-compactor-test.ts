@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { env } from "node:process";
 
 import { compactToolResult } from "./output-compactor.ts";
 import { cloneDefaultConfig, runTest } from "./test-helpers.ts";
@@ -216,7 +217,16 @@ runTest("skill reads stay exact when preserveExactSkillReads is enabled for user
 	const result = compactToolResult(
 		{
 			toolName: "read",
-			input: { path: join(homedir(), ".pi", "agent", "skills", "example", "SKILL.md") },
+			input: {
+				path: join(
+					...(env["PI_CODING_AGENT_DIR"]
+						? [env["PI_CODING_AGENT_DIR"]]
+						: [homedir(), ".pi", "agent"]),
+					"skills",
+					"example",
+					"SKILL.md",
+				)
+			},
 			content: [{ type: "text", text: content }],
 		},
 		config,
