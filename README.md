@@ -288,6 +288,13 @@ Inspired by:
 - [mcowger/pi-rtk](https://github.com/mcowger/pi-rtk)
 - [rtk-ai/rtk](https://github.com/rtk-ai/rtk)
 
+## Related Pi Extensions
+
+- [pi-tool-display](https://github.com/MasuRii/pi-tool-display) — Compact tool rendering and diff visualization
+- [pi-permission-system](https://github.com/MasuRii/pi-permission-system) — Permission enforcement for tool and command access
+- [pi-smart-voice-notify](https://github.com/MasuRii/pi-smart-voice-notify) — Multi-channel TTS and sound notifications
+- [pi-image-tools](https://github.com/MasuRii/pi-image-tools) — Image attachment and inline preview
+
 ## License
 
 [MIT](LICENSE) © MasuRii
