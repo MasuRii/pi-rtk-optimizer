@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-04-01
+
+### Changed
+- Updated README.md with new background image source URL
+- Aligned npm keywords for better package discoverability
+- Added Related Pi Extensions cross-linking section to README
+
 ## [0.5.2] - 2026-04-01
 
 ### Changed
