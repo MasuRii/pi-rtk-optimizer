@@ -79,7 +79,7 @@ runTest("config-store can ensure, save, and reload isolated config files", () =>
 
 	try {
 		const ensured = ensureConfigExists(tempPath);
-		assert.equal(ensured.created, true);
+		assert.equal(ensured.error, undefined);
 		assert.equal(existsSync(tempPath), true);
 
 		const defaultLoad = loadRtkIntegrationConfig(tempPath);
@@ -153,6 +153,14 @@ runTest("command detection ignores env prefixes, blank lines, and chained suffix
 	assert.equal(matchesCommandPatterns("echo hello", [/^bun test/]), false);
 });
 
+runTest("RTK command environment preserves explicit leading RTK_DB_PATH overrides", () => {
+	const command = 'RTK_DB_PATH="/custom/history.db" rtk git diff';
+	assert.equal(applyRtkCommandEnvironment(command), command);
+
+	const exportedCommand = 'export RTK_DB_PATH="/custom/history.db"; rtk git diff';
+	assert.equal(applyRtkCommandEnvironment(exportedCommand), exportedCommand);
+});
+
 runTest("path compaction preserves the tail and handles Windows separators", () => {
 	const unixPath = "/Users/example/projects/pi-rtk-optimizer/src/techniques/path-utils.ts";
 	const compactUnixPath = compactPath(unixPath, 28);
@@ -204,26 +212,32 @@ runTest("rewrite pipeline safety buffers rewritten Windows producer commands", (
 	assert.equal(applyRewrittenCommandShellSafetyFixups("git diff | grep TODO"), "git diff | grep TODO");
 });
 
-runTest("rewrite pipeline safety keeps RTK_DB_PATH scoped to rewritten producer commands", () => {
+runTest("rewrite pipeline safety keeps exported RTK_DB_PATH on rewritten producer commands", () => {
 	const rewritten = applyRewrittenCommandShellSafetyFixups(
 		applyRtkCommandEnvironment("rtk git diff agent/extensions/pi-multi-auth/account-manager.ts | head -200"),
 	);
 
 	if (process.platform === "win32") {
 		assert.ok(rewritten.startsWith("{"));
-		assert.equal(rewritten.startsWith("RTK_DB_PATH="), false);
+		assert.equal(rewritten.startsWith("export RTK_DB_PATH="), false);
 		assert.ok(rewritten.includes("RTK_DB_PATH="));
 		assert.ok(
 			rewritten.includes('rtk git diff agent/extensions/pi-multi-auth/account-manager.ts > "$__pi_rtk_pipe_tmp"'),
 		);
 		assert.ok(rewritten.includes('(head -200) < "$__pi_rtk_pipe_tmp"'));
 	} else {
-		assert.ok(rewritten.startsWith("RTK_DB_PATH="));
+		assert.ok(rewritten.startsWith("export RTK_DB_PATH="));
 		assert.equal(
 			rewritten,
 			applyRtkCommandEnvironment("rtk git diff agent/extensions/pi-multi-auth/account-manager.ts | head -200"),
 		);
 	}
+});
+
+runTest("RTK command environment uses export prelude for shell compound commands", () => {
+	const rewritten = applyRtkCommandEnvironment('for d in a b; do echo "$d"; done');
+	assert.ok(/^export RTK_DB_PATH=/.test(rewritten));
+	assert.ok(/; for d in a b; do echo "\$d"; done$/.test(rewritten));
 });
 
 runTest("stripRtkHookWarnings handles bare, prefixed, and already-sanitized hook notices", () => {
