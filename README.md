@@ -59,9 +59,10 @@ Multi-stage pipeline to reduce token consumption:
 
 Place this folder in one of the following locations:
 
-```
-~/.pi/agent/extensions/pi-rtk-optimizer     # Global (all projects)
-.pi/extensions/pi-rtk-optimizer              # Project-specific
+```text
+~/.pi/agent/extensions/pi-rtk-optimizer                 # Global default (when PI_CODING_AGENT_DIR is unset)
+$PI_CODING_AGENT_DIR/extensions/pi-rtk-optimizer        # Global when PI_CODING_AGENT_DIR is set
+.pi/extensions/pi-rtk-optimizer                         # Project-specific
 ```
 
 Pi auto-discovers extensions in these paths on startup.
@@ -107,8 +108,9 @@ Use arrow keys to navigate settings, Enter to cycle values, and Escape to close.
 
 Configuration is stored at:
 
-```
-~/.pi/agent/extensions/pi-rtk-optimizer/config.json
+```text
+Default global path: ~/.pi/agent/extensions/pi-rtk-optimizer/config.json
+Actual global path: $PI_CODING_AGENT_DIR/extensions/pi-rtk-optimizer/config.json when PI_CODING_AGENT_DIR is set
 ```
 
 A starter template is included at `config/config.example.json`.
@@ -145,7 +147,7 @@ A starter template is included at `config/config.example.json`.
 | `outputCompaction.enabled` | boolean | `true` | Enable output compaction pipeline |
 | `outputCompaction.stripAnsi` | boolean | `true` | Remove ANSI escape codes |
 | `outputCompaction.sourceCodeFilteringEnabled` | boolean | `true` | Enable source code filtering for `read` output |
-| `outputCompaction.preserveExactSkillReads` | boolean | `false` | Keep reads under Pi skill directories exact, bypassing read compaction |
+| `outputCompaction.preserveExactSkillReads` | boolean | `false` | Keep reads under configured Pi/global/project skill directories exact, bypassing read compaction |
 | `outputCompaction.sourceCodeFiltering` | string | `"minimal"` | Filter level: `"none"`, `"minimal"`, `"aggressive"` |
 | `outputCompaction.aggregateTestOutput` | boolean | `true` | Summarize test runner output |
 | `outputCompaction.filterBuildOutput` | boolean | `true` | Filter build/compile output |
@@ -153,6 +155,8 @@ A starter template is included at `config/config.example.json`.
 | `outputCompaction.aggregateLinterOutput` | boolean | `true` | Summarize linter output |
 | `outputCompaction.groupSearchOutput` | boolean | `true` | Group search results by file |
 | `outputCompaction.trackSavings` | boolean | `true` | Track compaction metrics |
+
+Skill-read preservation covers the global Pi skills directory (`~/.pi/agent/skills` by default, or `$PI_CODING_AGENT_DIR/skills` when set), `~/.agents/skills`, project `.pi/skills`, and ancestor `.agents/skills` directories.
 
 #### Truncation Settings
 
@@ -171,7 +175,7 @@ A starter template is included at `config/config.example.json`.
 | `minimal` | Removes non-doc comments, collapses blank lines |
 | `aggressive` | Also removes imports, keeps only signatures and key logic |
 
-> **Note:** If file edits fail because "old text does not match," disable source filtering via `/rtk`, re-read the file, apply the edit, then re-enable filtering.
+> **Note:** When source filtering and read truncation safeguards are active, Pi injects a troubleshooting note for repeated file-edit mismatches. If edits fail because "old text does not match," disable source filtering via `/rtk`, re-read the file, apply the edit, then re-enable filtering.
 
 ### Example Configuration
 
@@ -224,15 +228,19 @@ src/
 ├── index.ts                # Extension bootstrap and event wiring
 ├── config-store.ts         # Config load/save with normalization
 ├── config-modal.ts         # TUI settings modal and /rtk handler
-├── command-rewriter.ts     # Command tokenization and rewrite logic
-├── rewrite-bypass.ts       # Rewrite safety bypass rules for interactive/structured commands
-├── rewrite-rules.ts        # Rewrite rule catalog
-├── runtime-guard.ts        # Runtime availability guard helpers for rewrite mode
-├── output-compactor.ts     # Tool result compaction pipeline
-├── output-metrics.ts       # Savings tracking and reporting
-├── command-completions.ts  # /rtk subcommand completions
+├── command-rewriter.ts         # Command tokenization and rewrite logic
+├── rewrite-bypass.ts           # Rewrite safety bypass rules for interactive/structured commands
+├── rewrite-rules.ts            # Rewrite rule catalog
+├── rewrite-pipeline-safety.ts  # Shell-safety fixups for rewritten commands
+├── rtk-command-environment.ts  # RTK_DB_PATH scoping for rewritten commands
+├── shell-env-prefix.ts         # Environment assignment parsing helpers
+├── runtime-guard.ts            # Runtime availability guard helpers for rewrite mode
+├── output-compactor.ts         # Tool result compaction pipeline
+├── output-metrics.ts           # Savings tracking and reporting
+├── tool-execution-sanitizer.ts # Streaming bash execution output sanitizer
+├── command-completions.ts      # /rtk subcommand completions
 ├── windows-command-helpers.ts  # Windows bash compatibility
-└── techniques/             # Compaction technique implementations
+└── techniques/                 # Compaction technique implementations
     ├── ansi.ts             # ANSI code stripping
     ├── build.ts            # Build output filtering
     ├── test-output.ts      # Test output aggregation
@@ -247,9 +255,12 @@ src/
 
 The extension hooks into Pi's event system:
 
-- **`beforeToolCall`** — Rewrites bash commands to rtk equivalents
-- **`afterToolResult`** — Compacts tool output before context consumption
-- **`command`** — Handles `/rtk` command and subcommands
+- **`tool_call`** — Rewrites bash commands to rtk equivalents or emits suggestions
+- **`tool_result`** — Compacts completed tool output before context consumption
+- **`tool_execution_start` / `tool_execution_update` / `tool_execution_end`** — Tracks and sanitizes streamed bash output
+- **`before_agent_start`** — Conditionally injects source-filter troubleshooting guidance
+- **`session_start` / `agent_end`** — Refreshes config and clears in-session tracking state
+- **Registered `/rtk` command** — Handles settings, status, verification, stats, and reset subcommands
 
 ### Windows Compatibility
 
