@@ -273,14 +273,6 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 		maybeWarnRtkMissing(ctx);
 	});
 
-	pi.on("session_switch", async (_event, ctx) => {
-		warnedMessages.reset();
-		suggestionNotices.reset();
-		clearTrackedBashCommands();
-		missingRtkWarningShown = false;
-		await refreshConfig(ctx);
-		maybeWarnRtkMissing(ctx);
-	});
 
 	pi.on("agent_end", async () => {
 		clearTrackedBashCommands();
