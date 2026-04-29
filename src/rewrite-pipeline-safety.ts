@@ -10,6 +10,26 @@ interface ProducerRewritePlan {
 	captureStderr: boolean;
 }
 
+interface ShellSafetyTarget {
+	environmentPrelude: string;
+	command: string;
+}
+
+const LEADING_RTK_DB_PATH_EXPORT_PRELUDE_PATTERN =
+	/^(\s*export\s+RTK_DB_PATH=(?:"(?:\\.|[^"])*"|'[^']*'|[^\s;]+)\s*;\s*)([\s\S]*)$/u;
+
+function splitLeadingRtkDbPathExportPrelude(command: string): ShellSafetyTarget {
+	const match = command.match(LEADING_RTK_DB_PATH_EXPORT_PRELUDE_PATTERN);
+	if (!match) {
+		return { environmentPrelude: "", command };
+	}
+
+	return {
+		environmentPrelude: match[1] ?? "",
+		command: match[2] ?? "",
+	};
+}
+
 function isTopLevelQuoteCharacter(character: string): character is '"' | "'" | "`" {
 	return character === '"' || character === "'" || character === "`";
 }
@@ -134,7 +154,8 @@ export function applyRewrittenCommandShellSafetyFixups(command: string): string 
 		return command;
 	}
 
-	const parsedPipeline = parseSimpleTopLevelPipeline(command);
+	const target = splitLeadingRtkDbPathExportPrelude(command);
+	const parsedPipeline = parseSimpleTopLevelPipeline(target.command);
 	if (!parsedPipeline) {
 		return command;
 	}
@@ -153,5 +174,5 @@ export function applyRewrittenCommandShellSafetyFixups(command: string): string 
 		return command;
 	}
 
-	return buildBufferedPipelineCommand(producer, remainder);
+	return `${target.environmentPrelude}${buildBufferedPipelineCommand(producer, remainder)}`;
 }

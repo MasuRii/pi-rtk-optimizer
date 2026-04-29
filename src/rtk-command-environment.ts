@@ -4,6 +4,7 @@ import { splitLeadingEnvAssignments } from "./shell-env-prefix.js";
 
 const RTK_DB_PATH_ENV_NAME = "RTK_DB_PATH";
 const RTK_DB_PATH_ASSIGNMENT_PATTERN = /(?:^|\s)RTK_DB_PATH=(?:"[^"]*"|'[^']*'|[^\s]+)(?=\s|$)/;
+const RTK_DB_PATH_EXPORT_PATTERN = /^export\s+RTK_DB_PATH=(?:"[^"]*"|'[^']*'|[^\s;]+)(?=\s*(?:;|$))/;
 
 function resolveTemporaryDirectory(): string {
 	if (process.platform === "win32") {
@@ -48,7 +49,11 @@ function quoteForShellEnv(value: string): string {
 }
 
 function hasLeadingRtkDbPathAssignment(command: string): boolean {
-	return RTK_DB_PATH_ASSIGNMENT_PATTERN.test(splitLeadingEnvAssignments(command).envPrefix);
+	const trimmed = command.trimStart();
+	return (
+		RTK_DB_PATH_ASSIGNMENT_PATTERN.test(splitLeadingEnvAssignments(trimmed).envPrefix) ||
+		RTK_DB_PATH_EXPORT_PATTERN.test(trimmed)
+	);
 }
 
 export function applyRtkCommandEnvironment(command: string): string {
@@ -60,5 +65,5 @@ export function applyRtkCommandEnvironment(command: string): string {
 		return command;
 	}
 
-	return `${RTK_DB_PATH_ENV_NAME}=${quoteForShellEnv(getTemporaryRtkHistoryDbPath())} ${command}`;
+	return `export ${RTK_DB_PATH_ENV_NAME}=${quoteForShellEnv(getTemporaryRtkHistoryDbPath())}; ${command}`;
 }
