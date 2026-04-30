@@ -24,6 +24,10 @@ function buildReadContent(lineCount: number): string {
 	return `${lines.join("\n")}\n`;
 }
 
+function setReadCompaction(config: ReturnType<typeof cloneDefaultConfig>, enabled: boolean): void {
+	config.outputCompaction.readCompaction = { enabled };
+}
+
 function firstTextBlock(content: unknown[] | undefined): string {
 	if (!Array.isArray(content) || content.length === 0) {
 		return "";
@@ -73,6 +77,7 @@ function assertNoOutputEmoji(text: string): void {
 
 runTest("precision read with offset keeps exact output (no source/smart/hard truncation)", () => {
 	const config = cloneDefaultConfig();
+	setReadCompaction(config, true);
 	config.outputCompaction.truncate.enabled = true;
 	config.outputCompaction.truncate.maxChars = 500;
 	config.outputCompaction.smartTruncate.enabled = true;
@@ -94,6 +99,7 @@ runTest("precision read with offset keeps exact output (no source/smart/hard tru
 
 runTest("precision read with limit keeps exact output", () => {
 	const config = cloneDefaultConfig();
+	setReadCompaction(config, true);
 	config.outputCompaction.truncate.enabled = true;
 	config.outputCompaction.truncate.maxChars = 500;
 	config.outputCompaction.smartTruncate.enabled = true;
@@ -113,8 +119,34 @@ runTest("precision read with limit keeps exact output", () => {
 	assert.deepEqual(result.techniques, []);
 });
 
-runTest("normal read compacts and adds banner", () => {
+runTest("default read output stays exact when read compaction is disabled by default", () => {
 	const config = cloneDefaultConfig();
+	config.outputCompaction.sourceCodeFilteringEnabled = true;
+	config.outputCompaction.sourceCodeFiltering = "aggressive";
+	config.outputCompaction.smartTruncate.enabled = true;
+	config.outputCompaction.smartTruncate.maxLines = 40;
+	config.outputCompaction.truncate.enabled = true;
+	config.outputCompaction.truncate.maxChars = 500;
+
+	const content = buildReadContent(220);
+	const result = compactToolResult(
+		{
+			toolName: "read",
+			input: { path: "sample.ts" },
+			content: [{ type: "text", text: content }],
+		},
+		config,
+	);
+
+	assert.equal(result.changed, false);
+	assert.deepEqual(result.techniques, []);
+});
+
+runTest("normal read compacts and adds banner when read compaction is enabled", () => {
+	const config = cloneDefaultConfig();
+	setReadCompaction(config, true);
+	config.outputCompaction.sourceCodeFilteringEnabled = true;
+	config.outputCompaction.sourceCodeFiltering = "minimal";
 	config.outputCompaction.smartTruncate.enabled = true;
 	config.outputCompaction.smartTruncate.maxLines = 40;
 
@@ -138,6 +170,7 @@ runTest("normal read compacts and adds banner", () => {
 
 runTest("short read output stays exact below threshold", () => {
 	const config = cloneDefaultConfig();
+	setReadCompaction(config, true);
 	const content = buildReadContent(40);
 
 	const result = compactToolResult(
@@ -155,6 +188,7 @@ runTest("short read output stays exact below threshold", () => {
 
 runTest("read output stays exact at the 80-line boundary with trailing newline", () => {
 	const config = cloneDefaultConfig();
+	setReadCompaction(config, true);
 	config.outputCompaction.smartTruncate.enabled = true;
 	config.outputCompaction.smartTruncate.maxLines = 40;
 
@@ -172,8 +206,11 @@ runTest("read output stays exact at the 80-line boundary with trailing newline",
 	assert.deepEqual(result.techniques, []);
 });
 
-runTest("read output compacts once the content exceeds the 80-line exactness threshold", () => {
+runTest("read output compacts once the content exceeds the 80-line exactness threshold when read compaction is enabled", () => {
 	const config = cloneDefaultConfig();
+	setReadCompaction(config, true);
+	config.outputCompaction.sourceCodeFilteringEnabled = true;
+	config.outputCompaction.sourceCodeFiltering = "minimal";
 	config.outputCompaction.smartTruncate.enabled = true;
 	config.outputCompaction.smartTruncate.maxLines = 40;
 
@@ -193,6 +230,9 @@ runTest("read output compacts once the content exceeds the 80-line exactness thr
 
 runTest("source file reads skip lossy source filtering when truncation safeguards are not needed", () => {
 	const config = cloneDefaultConfig();
+	setReadCompaction(config, true);
+	config.outputCompaction.sourceCodeFilteringEnabled = true;
+	config.outputCompaction.sourceCodeFiltering = "minimal";
 	config.outputCompaction.smartTruncate.enabled = false;
 	config.outputCompaction.truncate.enabled = false;
 
@@ -213,6 +253,7 @@ runTest("source file reads skip lossy source filtering when truncation safeguard
 
 runTest("skill reads stay exact when preserveExactSkillReads is enabled for user skills", () => {
 	const config = cloneDefaultConfig();
+	setReadCompaction(config, true);
 	config.outputCompaction.preserveExactSkillReads = true;
 	config.outputCompaction.truncate.enabled = true;
 	config.outputCompaction.truncate.maxChars = 500;
@@ -235,6 +276,7 @@ runTest("skill reads stay exact when preserveExactSkillReads is enabled for user
 
 runTest("project .pi skill reads stay exact when preserveExactSkillReads is enabled", () => {
 	const config = cloneDefaultConfig();
+	setReadCompaction(config, true);
 	config.outputCompaction.preserveExactSkillReads = true;
 	config.outputCompaction.truncate.enabled = true;
 	config.outputCompaction.truncate.maxChars = 500;
@@ -257,6 +299,7 @@ runTest("project .pi skill reads stay exact when preserveExactSkillReads is enab
 
 runTest("ancestor .agents skill reads stay exact when preserveExactSkillReads is enabled", () => {
 	const config = cloneDefaultConfig();
+	setReadCompaction(config, true);
 	config.outputCompaction.preserveExactSkillReads = true;
 	config.outputCompaction.truncate.enabled = true;
 	config.outputCompaction.truncate.maxChars = 500;

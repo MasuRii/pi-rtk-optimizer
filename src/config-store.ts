@@ -30,10 +30,14 @@ function toMode(value: unknown): RtkIntegrationConfig["mode"] {
 		: DEFAULT_RTK_INTEGRATION_CONFIG.mode;
 }
 
-function toSourceFilterLevel(value: unknown): RtkSourceFilterLevel {
+function toSourceFilterLevel(value: unknown, fallback: RtkSourceFilterLevel): RtkSourceFilterLevel {
 	return RTK_SOURCE_FILTER_LEVELS.includes(value as RtkSourceFilterLevel)
 		? (value as RtkSourceFilterLevel)
-		: DEFAULT_RTK_INTEGRATION_CONFIG.outputCompaction.sourceCodeFiltering;
+		: fallback;
+}
+
+function hasOwnProperty(source: Record<string, unknown>, key: string): boolean {
+	return Object.prototype.hasOwnProperty.call(source, key);
 }
 
 function toObject(value: unknown): Record<string, unknown> {
@@ -46,8 +50,20 @@ function toObject(value: unknown): Record<string, unknown> {
 export function normalizeRtkIntegrationConfig(raw: unknown): RtkIntegrationConfig {
 	const source = toObject(raw);
 	const outputCompactionSource = toObject(source.outputCompaction);
+	const readCompactionSource = toObject(outputCompactionSource.readCompaction);
 	const truncateSource = toObject(outputCompactionSource.truncate);
 	const smartTruncateSource = toObject(outputCompactionSource.smartTruncate);
+	const hasReadCompaction = hasOwnProperty(outputCompactionSource, "readCompaction");
+	const legacyReadCompactionFallback = !hasReadCompaction;
+	const sourceFilteringFallback = legacyReadCompactionFallback
+		? true
+		: DEFAULT_RTK_INTEGRATION_CONFIG.outputCompaction.sourceCodeFilteringEnabled;
+	const sourceFilterLevelFallback = legacyReadCompactionFallback
+		? "minimal"
+		: DEFAULT_RTK_INTEGRATION_CONFIG.outputCompaction.sourceCodeFiltering;
+	const smartTruncateEnabledFallback = legacyReadCompactionFallback
+		? true
+		: DEFAULT_RTK_INTEGRATION_CONFIG.outputCompaction.smartTruncate.enabled;
 
 	return {
 		enabled: toBoolean(source.enabled, DEFAULT_RTK_INTEGRATION_CONFIG.enabled),
@@ -69,9 +85,17 @@ export function normalizeRtkIntegrationConfig(raw: unknown): RtkIntegrationConfi
 				outputCompactionSource.stripAnsi,
 				DEFAULT_RTK_INTEGRATION_CONFIG.outputCompaction.stripAnsi,
 			),
+			readCompaction: {
+				enabled: hasReadCompaction
+					? toBoolean(
+							readCompactionSource.enabled,
+							DEFAULT_RTK_INTEGRATION_CONFIG.outputCompaction.readCompaction.enabled,
+						)
+					: true,
+			},
 			sourceCodeFilteringEnabled: toBoolean(
 				outputCompactionSource.sourceCodeFilteringEnabled,
-				DEFAULT_RTK_INTEGRATION_CONFIG.outputCompaction.sourceCodeFilteringEnabled,
+				sourceFilteringFallback,
 			),
 			preserveExactSkillReads: toBoolean(
 				outputCompactionSource.preserveExactSkillReads,
@@ -89,11 +113,14 @@ export function normalizeRtkIntegrationConfig(raw: unknown): RtkIntegrationConfi
 					200_000,
 				),
 			},
-			sourceCodeFiltering: toSourceFilterLevel(outputCompactionSource.sourceCodeFiltering),
+			sourceCodeFiltering: toSourceFilterLevel(
+				outputCompactionSource.sourceCodeFiltering,
+				sourceFilterLevelFallback,
+			),
 			smartTruncate: {
 				enabled: toBoolean(
 					smartTruncateSource.enabled,
-					DEFAULT_RTK_INTEGRATION_CONFIG.outputCompaction.smartTruncate.enabled,
+					smartTruncateEnabledFallback,
 				),
 				maxLines: toInteger(
 					smartTruncateSource.maxLines,

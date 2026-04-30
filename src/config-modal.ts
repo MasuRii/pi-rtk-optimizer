@@ -58,7 +58,7 @@ function summarizeConfig(config: RtkIntegrationConfig, runtimeStatus: RuntimeSta
 		? "rtk=available"
 		: `rtk=missing${runtimeStatus.lastError ? ` (${runtimeStatus.lastError})` : ""}`;
 
-	return `enabled=${config.enabled}, mode=${config.mode}, rewriteSource=rtk, rewriteNotice=${config.showRewriteNotifications}, compaction=${config.outputCompaction.enabled}, sourceFilterEnabled=${config.outputCompaction.sourceCodeFilteringEnabled}, preserveSkillReads=${config.outputCompaction.preserveExactSkillReads}, sourceFilter=${config.outputCompaction.sourceCodeFiltering}, ${runtime}`;
+	return `enabled=${config.enabled}, mode=${config.mode}, rewriteSource=rtk, rewriteNotice=${config.showRewriteNotifications}, compaction=${config.outputCompaction.enabled}, readCompaction=${config.outputCompaction.readCompaction.enabled}, sourceFilterEnabled=${config.outputCompaction.sourceCodeFilteringEnabled}, preserveSkillReads=${config.outputCompaction.preserveExactSkillReads}, sourceFilter=${config.outputCompaction.sourceCodeFiltering}, ${runtime}`;
 }
 
 function buildSettingItems(config: RtkIntegrationConfig): SettingItem[] {
@@ -103,6 +103,13 @@ function buildSettingItems(config: RtkIntegrationConfig): SettingItem[] {
 			label: "Strip ANSI in output",
 			description: "Remove color/control codes from tool output before further compaction",
 			currentValue: toOnOff(config.outputCompaction.stripAnsi),
+			values: ON_OFF,
+		},
+		{
+			id: "outputReadCompactionEnabled",
+			label: "Read compaction enabled",
+			description: "If off, read tool output stays exact; build/test/git/grep compaction can still run",
+			currentValue: toOnOff(config.outputCompaction.readCompaction.enabled),
 			values: ON_OFF,
 		},
 		{
@@ -218,6 +225,14 @@ function applySetting(config: RtkIntegrationConfig, id: string, value: string): 
 			return {
 				...config,
 				outputCompaction: { ...config.outputCompaction, stripAnsi: value === "on" },
+			};
+		case "outputReadCompactionEnabled":
+			return {
+				...config,
+				outputCompaction: {
+					...config.outputCompaction,
+					readCompaction: { enabled: value === "on" },
+				},
 			};
 		case "outputTruncateEnabled":
 			return {
@@ -353,6 +368,7 @@ function syncSettingValues(settingsList: SettingValueSyncTarget, config: RtkInte
 	settingsList.updateValue("guardWhenRtkMissing", toOnOff(config.guardWhenRtkMissing));
 	settingsList.updateValue("outputCompactionEnabled", toOnOff(config.outputCompaction.enabled));
 	settingsList.updateValue("outputStripAnsi", toOnOff(config.outputCompaction.stripAnsi));
+	settingsList.updateValue("outputReadCompactionEnabled", toOnOff(config.outputCompaction.readCompaction.enabled));
 	settingsList.updateValue("outputTruncateEnabled", toOnOff(config.outputCompaction.truncate.enabled));
 	settingsList.updateValue("outputTruncateMaxChars", String(config.outputCompaction.truncate.maxChars));
 	settingsList.updateValue("outputSourceFilteringEnabled", toOnOff(config.outputCompaction.sourceCodeFilteringEnabled));

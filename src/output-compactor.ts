@@ -140,6 +140,10 @@ function shouldPreserveExactReadOutput(
 	input: Record<string, unknown>,
 	config: RtkIntegrationConfig,
 ): boolean {
+	if (!config.outputCompaction.readCompaction.enabled) {
+		return true;
+	}
+
 	if (hasExplicitReadRange(input)) {
 		return true;
 	}

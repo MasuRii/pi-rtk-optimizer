@@ -6,15 +6,18 @@
   "outputCompaction": {
     "enabled": true,
     "stripAnsi": true,
-    "sourceCodeFilteringEnabled": true,
+    "readCompaction": {
+      "enabled": false
+    },
+    "sourceCodeFilteringEnabled": false,
     "preserveExactSkillReads": false,
     "truncate": {
       "enabled": true,
       "maxChars": 12000
     },
-    "sourceCodeFiltering": "minimal",
+    "sourceCodeFiltering": "none",
     "smartTruncate": {
-      "enabled": true,
+      "enabled": false,
       "maxLines": 220
     },
     "aggregateTestOutput": true,

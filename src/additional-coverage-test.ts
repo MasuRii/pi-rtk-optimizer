@@ -66,11 +66,25 @@ runTest("config-store normalizes invalid values and clamps numeric ranges", () =
 	assert.equal(normalized.mode, "rewrite");
 	assert.equal(Object.hasOwn(normalized, "rewriteGitGithub"), false);
 	assert.equal(normalized.outputCompaction.stripAnsi, false);
+	assert.equal(normalized.outputCompaction.readCompaction.enabled, true);
 	assert.equal(normalized.outputCompaction.sourceCodeFilteringEnabled, true);
 	assert.equal(normalized.outputCompaction.sourceCodeFiltering, "minimal");
 	assert.equal(normalized.outputCompaction.truncate.maxChars, 1_000);
 	assert.equal(normalized.outputCompaction.smartTruncate.maxLines, 4_000);
 	assert.equal(normalized.outputCompaction.trackSavings, false);
+});
+
+runTest("config-store uses safer read defaults when readCompaction is explicit", () => {
+	const normalized = normalizeRtkIntegrationConfig({
+		outputCompaction: {
+			readCompaction: { enabled: false },
+		},
+	});
+
+	assert.equal(normalized.outputCompaction.readCompaction.enabled, false);
+	assert.equal(normalized.outputCompaction.sourceCodeFilteringEnabled, false);
+	assert.equal(normalized.outputCompaction.sourceCodeFiltering, "none");
+	assert.equal(normalized.outputCompaction.smartTruncate.enabled, false);
 });
 
 runTest("config-store can ensure, save, and reload isolated config files", () => {
@@ -85,6 +99,7 @@ runTest("config-store can ensure, save, and reload isolated config files", () =>
 		const defaultLoad = loadRtkIntegrationConfig(tempPath);
 		assert.equal(defaultLoad.warning, undefined);
 		assert.equal(defaultLoad.config.mode, "rewrite");
+		assert.equal(defaultLoad.config.outputCompaction.readCompaction.enabled, false);
 
 		const saved = saveRtkIntegrationConfig(
 			{

@@ -130,9 +130,10 @@ Bash command support is intentionally resolved by the installed `rtk` binary thr
 |--------|------|---------|-------------|
 | `outputCompaction.enabled` | boolean | `true` | Enable output compaction pipeline |
 | `outputCompaction.stripAnsi` | boolean | `true` | Remove ANSI escape codes |
-| `outputCompaction.sourceCodeFilteringEnabled` | boolean | `true` | Enable source code filtering for `read` output |
+| `outputCompaction.readCompaction.enabled` | boolean | `false` | Enable lossy compaction for `read` output; defaults off so code reads stay exact |
+| `outputCompaction.sourceCodeFilteringEnabled` | boolean | `false` | Enable source code filtering for `read` output when read compaction is enabled |
 | `outputCompaction.preserveExactSkillReads` | boolean | `false` | Keep reads under configured Pi/global/project skill directories exact, bypassing read compaction |
-| `outputCompaction.sourceCodeFiltering` | string | `"minimal"` | Filter level: `"none"`, `"minimal"`, `"aggressive"` |
+| `outputCompaction.sourceCodeFiltering` | string | `"none"` | Filter level: `"none"`, `"minimal"`, `"aggressive"` |
 | `outputCompaction.aggregateTestOutput` | boolean | `true` | Summarize test runner output |
 | `outputCompaction.filterBuildOutput` | boolean | `true` | Filter build/compile output |
 | `outputCompaction.compactGitOutput` | boolean | `true` | Compact git command output |
@@ -146,7 +147,7 @@ Skill-read preservation covers the global Pi skills directory (`~/.pi/agent/skil
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `outputCompaction.smartTruncate.enabled` | boolean | `true` | — | Enable smart line-based truncation |
+| `outputCompaction.smartTruncate.enabled` | boolean | `false` | — | Enable smart line-based truncation for read output when read compaction is enabled |
 | `outputCompaction.smartTruncate.maxLines` | number | `220` | 40–4000 | Maximum lines after smart truncation |
 | `outputCompaction.truncate.enabled` | boolean | `true` | — | Enable hard character truncation |
 | `outputCompaction.truncate.maxChars` | number | `12000` | 1000–200000 | Maximum characters in final output |
@@ -159,7 +160,7 @@ Skill-read preservation covers the global Pi skills directory (`~/.pi/agent/skil
 | `minimal` | Removes non-doc comments, collapses blank lines |
 | `aggressive` | Also removes imports, keeps only signatures and key logic |
 
-> **Note:** When source filtering and read truncation safeguards are active, Pi injects a troubleshooting note for repeated file-edit mismatches. If edits fail because "old text does not match," disable source filtering via `/rtk`, re-read the file, apply the edit, then re-enable filtering.
+> **Note:** When read compaction, source filtering, and read truncation safeguards are active, Pi injects a troubleshooting note for repeated file-edit mismatches. If edits fail because "old text does not match," disable read compaction via `/rtk`, re-read the file, apply the edit, then re-enable compaction.
 
 ### Example Configuration
 
@@ -172,9 +173,12 @@ Skill-read preservation covers the global Pi skills directory (`~/.pi/agent/skil
   "outputCompaction": {
     "enabled": true,
     "stripAnsi": true,
-    "sourceCodeFilteringEnabled": true,
+    "readCompaction": {
+      "enabled": false
+    },
+    "sourceCodeFilteringEnabled": false,
     "preserveExactSkillReads": false,
-    "sourceCodeFiltering": "minimal",
+    "sourceCodeFiltering": "none",
     "aggregateTestOutput": true,
     "filterBuildOutput": true,
     "compactGitOutput": true,
@@ -182,7 +186,7 @@ Skill-read preservation covers the global Pi skills directory (`~/.pi/agent/skil
     "groupSearchOutput": true,
     "trackSavings": true,
     "smartTruncate": {
-      "enabled": true,
+      "enabled": false,
       "maxLines": 220
     },
     "truncate": {

@@ -7,6 +7,9 @@ export type RtkSourceFilterLevel = (typeof RTK_SOURCE_FILTER_LEVELS)[number];
 export interface RtkOutputCompactionConfig {
 	enabled: boolean;
 	stripAnsi: boolean;
+	readCompaction: {
+		enabled: boolean;
+	};
 	truncate: {
 		enabled: boolean;
 		maxChars: number;
@@ -42,15 +45,18 @@ export const DEFAULT_RTK_INTEGRATION_CONFIG: RtkIntegrationConfig = {
 	outputCompaction: {
 		enabled: true,
 		stripAnsi: true,
+		readCompaction: {
+			enabled: false,
+		},
 		truncate: {
 			enabled: true,
 			maxChars: 12_000,
 		},
-		sourceCodeFilteringEnabled: true,
+		sourceCodeFilteringEnabled: false,
 		preserveExactSkillReads: false,
-		sourceCodeFiltering: "minimal",
+		sourceCodeFiltering: "none",
 		smartTruncate: {
-			enabled: true,
+			enabled: false,
 			maxLines: 220,
 		},
 		aggregateTestOutput: true,

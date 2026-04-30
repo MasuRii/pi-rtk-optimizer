@@ -28,13 +28,14 @@ function trimMessage(raw: string, maxLength = 220): string {
 }
 
 const SOURCE_FILTER_TROUBLESHOOTING_NOTE =
-	"RTK note: If file edits repeatedly fail because old text does not match, ask the user to manually run '/rtk' in the Pi TUI, disable 'Read source filtering enabled', re-read the file, apply the edit, then ask the user to manually re-enable it in the Pi TUI.";
+	"RTK note: If file edits repeatedly fail because old text does not match, ask the user to manually run '/rtk' in the Pi TUI, disable 'Read compaction enabled', re-read the file, apply the edit, then ask the user to manually re-enable it in the Pi TUI.";
 
 export function shouldInjectSourceFilterTroubleshootingNote(config: RtkIntegrationConfig): boolean {
 	const compaction = config.outputCompaction;
 	return (
 		config.enabled &&
 		compaction.enabled &&
+		compaction.readCompaction.enabled &&
 		compaction.sourceCodeFilteringEnabled &&
 		compaction.sourceCodeFiltering !== "none" &&
 		(compaction.smartTruncate.enabled || compaction.truncate.enabled)

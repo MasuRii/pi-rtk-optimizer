@@ -34,6 +34,7 @@ const { DEFAULT_RTK_INTEGRATION_CONFIG } = await import("./types.ts");
 function configWith(overrides: {
 	enabled?: boolean;
 	compactionEnabled?: boolean;
+	readCompactionEnabled?: boolean;
 	sourceFilteringEnabled?: boolean;
 	sourceFilteringLevel?: "none" | "minimal" | "aggressive";
 	smartTruncateEnabled?: boolean;
@@ -46,6 +47,10 @@ function configWith(overrides: {
 		outputCompaction: {
 			...base.outputCompaction,
 			enabled: overrides.compactionEnabled ?? base.outputCompaction.enabled,
+			readCompaction: {
+				...base.outputCompaction.readCompaction,
+				enabled: overrides.readCompactionEnabled ?? base.outputCompaction.readCompaction.enabled,
+			},
 			sourceCodeFilteringEnabled:
 				overrides.sourceFilteringEnabled ?? base.outputCompaction.sourceCodeFilteringEnabled,
 			sourceCodeFiltering: overrides.sourceFilteringLevel ?? base.outputCompaction.sourceCodeFiltering,
@@ -86,13 +91,23 @@ runTest("bounded notice tracker coerces invalid limits to a safe minimum", () =>
 runTest("source-filter note injected when source filtering is active", () => {
 	assert.equal(
 		shouldInjectSourceFilterTroubleshootingNote(
-			configWith({ sourceFilteringEnabled: true, sourceFilteringLevel: "minimal" }),
+			configWith({
+				readCompactionEnabled: true,
+				sourceFilteringEnabled: true,
+				sourceFilteringLevel: "minimal",
+				smartTruncateEnabled: true,
+			}),
 		),
 		true,
 	);
 	assert.equal(
 		shouldInjectSourceFilterTroubleshootingNote(
-			configWith({ sourceFilteringEnabled: true, sourceFilteringLevel: "aggressive" }),
+			configWith({
+				readCompactionEnabled: true,
+				sourceFilteringEnabled: true,
+				sourceFilteringLevel: "aggressive",
+				smartTruncateEnabled: true,
+			}),
 		),
 		true,
 	);
@@ -104,6 +119,20 @@ runTest("source-filter note skipped when extension is disabled", () => {
 
 runTest("source-filter note skipped when compaction is disabled", () => {
 	assert.equal(shouldInjectSourceFilterTroubleshootingNote(configWith({ compactionEnabled: false })), false);
+});
+
+runTest("source-filter note skipped when read compaction is disabled", () => {
+	assert.equal(
+		shouldInjectSourceFilterTroubleshootingNote(
+			configWith({
+				readCompactionEnabled: false,
+				sourceFilteringEnabled: true,
+				sourceFilteringLevel: "minimal",
+				smartTruncateEnabled: true,
+			}),
+		),
+		false,
+	);
 });
 
 runTest("source-filter note skipped when source filtering flag is off", () => {
