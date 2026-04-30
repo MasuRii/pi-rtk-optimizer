@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-30
+
+### Added
+- Added opt-in `readCompaction` controls for `read` output so lossy source filtering and smart truncation stay disabled unless explicitly enabled.
+
+### Changed
+- Updated README and example configuration defaults for safer read-compaction behavior and troubleshooting guidance.
+- Updated `@mariozechner/pi-coding-agent` and `@mariozechner/pi-tui` peer dependencies to ^0.70.6.
+
 ## [0.6.0] - 2026-04-27
 
 ### Changed
