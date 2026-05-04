@@ -16,12 +16,11 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "npx --yes -p typescript@5.7.3 tsc -p tsconfig.json --noCheck",
-    "lint": "npm run build",
-    "typecheck": "npx --yes -p typescript@5.7.3 tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json --noCheck",
+    "typecheck": "tsc -p tsconfig.json",
     "test": "bun ./src/output-compactor-test.ts && bun ./src/command-rewriter-test.ts && bun ./src/runtime-guard-test.ts && bun ./src/additional-coverage-test.ts && bun ./src/config-modal-test.ts && bun ./src/index-test.ts",
-    "check": "npm run lint && npm run typecheck && npm run test",
-    "build:check": "bunx esbuild ./index.ts --bundle --platform=node --format=esm --outfile=./.pi-rtk-optimizer-check.mjs --external:@mariozechner/pi-coding-agent --external:@mariozechner/pi-tui && bun -e \"import { unlinkSync } from 'node:fs'; unlinkSync('./.pi-rtk-optimizer-check.mjs');\""
+    "check": "npm run typecheck && npm run test && npm run build:check",
+    "build:check": "esbuild ./index.ts --bundle --platform=node --format=esm --outfile=./.pi-rtk-optimizer-check.mjs --external:@mariozechner/pi-coding-agent --external:@mariozechner/pi-tui && node -e \"import { unlinkSync } from 'node:fs'; unlinkSync('./.pi-rtk-optimizer-check.mjs');\""
   },
   "keywords": [
     "pi-package",
@@ -52,13 +51,17 @@
   "publishConfig": {
     "access": "public"
   },
+  "devDependencies": {
+    "esbuild": "0.28.0",
+    "typescript": "5.7.3"
+  },
   "pi": {
     "extensions": [
       "./index.ts"
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "^0.70.6",
-    "@mariozechner/pi-tui": "^0.70.6"
+    "@mariozechner/pi-coding-agent": "^0.72.0",
+    "@mariozechner/pi-tui": "^0.72.0"
   }
 }
