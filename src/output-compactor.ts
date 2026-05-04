@@ -190,6 +190,10 @@ function hasLossyCompaction(techniques: string[]): boolean {
 	);
 }
 
+function normalizeTechniqueResult(result: string | null, currentText: string): string {
+	return result === null ? currentText : result;
+}
+
 function compactBashText(
 	text: string,
 	command: string | undefined,
@@ -207,45 +211,45 @@ function compactBashText(
 		}
 	}
 
-	const withoutRtkHookWarnings = stripRtkHookWarnings(nextText, command);
-	if (withoutRtkHookWarnings !== null && withoutRtkHookWarnings !== nextText) {
+	const withoutRtkHookWarnings = normalizeTechniqueResult(stripRtkHookWarnings(nextText, command), nextText);
+	if (withoutRtkHookWarnings !== nextText) {
 		nextText = withoutRtkHookWarnings;
 		techniques.push("rtk-hook-warning");
 	}
 
-	const withoutRtkEmoji = sanitizeRtkEmojiOutput(nextText, command);
-	if (withoutRtkEmoji !== null && withoutRtkEmoji !== nextText) {
+	const withoutRtkEmoji = normalizeTechniqueResult(sanitizeRtkEmojiOutput(nextText, command), nextText);
+	if (withoutRtkEmoji !== nextText) {
 		nextText = withoutRtkEmoji;
 		techniques.push("rtk-emoji");
 	}
 
 	if (compaction.filterBuildOutput) {
-		const compacted = filterBuildOutput(nextText, command);
-		if (compacted !== null && compacted !== nextText) {
+		const compacted = normalizeTechniqueResult(filterBuildOutput(nextText, command), nextText);
+		if (compacted !== nextText) {
 			nextText = compacted;
 			techniques.push("build");
 		}
 	}
 
 	if (compaction.aggregateTestOutput) {
-		const compacted = aggregateTestOutput(nextText, command);
-		if (compacted !== null && compacted !== nextText) {
+		const compacted = normalizeTechniqueResult(aggregateTestOutput(nextText, command), nextText);
+		if (compacted !== nextText) {
 			nextText = compacted;
 			techniques.push("test");
 		}
 	}
 
 	if (compaction.compactGitOutput) {
-		const compacted = compactGitOutput(nextText, command);
-		if (compacted !== null && compacted !== nextText) {
+		const compacted = normalizeTechniqueResult(compactGitOutput(nextText, command), nextText);
+		if (compacted !== nextText) {
 			nextText = compacted;
 			techniques.push("git");
 		}
 	}
 
 	if (compaction.aggregateLinterOutput) {
-		const compacted = aggregateLinterOutput(nextText, command);
-		if (compacted !== null && compacted !== nextText) {
+		const compacted = normalizeTechniqueResult(aggregateLinterOutput(nextText, command), nextText);
+		if (compacted !== nextText) {
 			nextText = compacted;
 			techniques.push("linter");
 		}
@@ -288,7 +292,10 @@ function compactReadText(
 		compaction.sourceCodeFiltering !== "none" &&
 		shouldApplyReadSourceFiltering(text, config)
 	) {
-		const filtered = filterSourceCode(nextText, language, compaction.sourceCodeFiltering);
+		const filtered = normalizeTechniqueResult(
+			filterSourceCode(nextText, language, compaction.sourceCodeFiltering),
+			nextText,
+		);
 		if (filtered !== nextText) {
 			nextText = filtered;
 			techniques.push(`source:${compaction.sourceCodeFiltering}`);
@@ -332,8 +339,8 @@ function compactGrepText(text: string, config: RtkIntegrationConfig): { text: st
 	}
 
 	if (compaction.groupSearchOutput) {
-		const grouped = groupSearchResults(nextText);
-		if (grouped !== null && grouped !== nextText) {
+		const grouped = normalizeTechniqueResult(groupSearchResults(nextText), nextText);
+		if (grouped !== nextText) {
 			nextText = grouped;
 			techniques.push("search");
 		}

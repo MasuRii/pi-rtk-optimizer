@@ -87,5 +87,9 @@ export interface RuntimeStatus {
 	rtkAvailable: boolean;
 	lastCheckedAt?: number;
 	lastError?: string;
+	rtkExecutablePath?: string;
+	rtkExecutableCommand?: string;
+	rtkExecutableResolver?: string;
+	rtkExecutableResolutionWarning?: string;
 }
 

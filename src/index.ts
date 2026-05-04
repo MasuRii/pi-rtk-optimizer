@@ -13,6 +13,7 @@ import { clearOutputMetrics, getOutputMetricsSummary } from "./output-metrics.js
 import { compactToolResult, type ToolResultCompactionMetadata } from "./output-compactor.js";
 import { toRecord } from "./record-utils.js";
 import { applyRtkCommandEnvironment } from "./rtk-command-environment.js";
+import { resolveRtkExecutable, type RtkExecutableResolution } from "./rtk-executable-resolver.js";
 import { applyRewrittenCommandShellSafetyFixups } from "./rewrite-pipeline-safety.js";
 import { shouldRequireRtkAvailabilityForCommandHandling, shouldSkipCommandHandlingWhenRtkMissing } from "./runtime-guard.js";
 import { sanitizeStreamingBashExecutionResult } from "./tool-execution-sanitizer.js";
@@ -115,6 +116,12 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 		return `RTK rewrite: ${original} -> ${rewritten}`;
 	};
 
+	const formatRewriteWarning = (command: string, warning: string): string => {
+		const target = trimMessage(command, 100);
+		const detail = trimMessage(warning, 120);
+		return `${EXTENSION_NAME}: rtk rewrite skipped for '${target}' (${detail}).`;
+	};
+
 	const warnOnce = (
 		ctx: ExtensionContext | ExtensionCommandContext,
 		message: string,
@@ -190,12 +197,18 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 	};
 
 	const refreshRuntimeStatus = async (): Promise<RuntimeStatus> => {
+		let executableResolution: RtkExecutableResolution | undefined;
 		try {
-			const result = await pi.exec("rtk", ["--version"], { timeout: 5000 });
+			executableResolution = await resolveRtkExecutable(pi);
+			const result = await pi.exec(executableResolution.command, ["--version"], { timeout: 5000 });
 			if (result.code === 0) {
 				runtimeStatus = {
 					rtkAvailable: true,
 					lastCheckedAt: Date.now(),
+					rtkExecutablePath: executableResolution.resolvedPath,
+					rtkExecutableCommand: executableResolution.command,
+					rtkExecutableResolver: executableResolution.resolver,
+					rtkExecutableResolutionWarning: executableResolution.warning,
 				};
 				missingRtkWarningShown = false;
 				return runtimeStatus;
@@ -208,6 +221,10 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 				rtkAvailable: false,
 				lastCheckedAt: Date.now(),
 				lastError: detail || `exit ${result.code}`,
+				rtkExecutablePath: executableResolution.resolvedPath,
+				rtkExecutableCommand: executableResolution.command,
+				rtkExecutableResolver: executableResolution.resolver,
+				rtkExecutableResolutionWarning: executableResolution.warning,
 			};
 			return runtimeStatus;
 		} catch (error) {
@@ -216,6 +233,10 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 				rtkAvailable: false,
 				lastCheckedAt: Date.now(),
 				lastError: trimMessage(message),
+				rtkExecutablePath: executableResolution?.resolvedPath,
+				rtkExecutableCommand: executableResolution?.command,
+				rtkExecutableResolver: executableResolution?.resolver,
+				rtkExecutableResolutionWarning: executableResolution?.warning,
 			};
 			return runtimeStatus;
 		}
@@ -303,10 +324,13 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 		}
 
 		trackBashCommand(eventRecord.toolCallId, eventRecord.args);
-		sanitizeStreamingBashExecutionResult(
+		const sanitization = sanitizeStreamingBashExecutionResult(
 			eventRecord.partialResult,
 			getTrackedBashCommand(eventRecord.toolCallId),
 		);
+		if (sanitization.changed) {
+			eventRecord.partialResult = sanitization.result;
+		}
 	});
 
 	pi.on("tool_execution_end", async (event) => {
@@ -317,7 +341,13 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 
 		try {
 			if (config.enabled && config.outputCompaction.enabled) {
-				sanitizeStreamingBashExecutionResult(eventRecord.result, getTrackedBashCommand(eventRecord.toolCallId));
+				const sanitization = sanitizeStreamingBashExecutionResult(
+					eventRecord.result,
+					getTrackedBashCommand(eventRecord.toolCallId),
+				);
+				if (sanitization.changed) {
+					eventRecord.result = sanitization.result;
+				}
 			}
 		} finally {
 			forgetTrackedBashCommand(eventRecord.toolCallId);
@@ -362,8 +392,22 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 			return {};
 		}
 
-		const decision = await computeRewriteDecision(event.input.command, config, pi);
+		let executableResolution: RtkExecutableResolution | undefined;
+		if (runtimeStatus.rtkExecutableCommand) {
+			const resolver: RtkExecutableResolution["resolver"] =
+				runtimeStatus.rtkExecutableResolver === "where" ? "where" : "which";
+			executableResolution = {
+				command: runtimeStatus.rtkExecutableCommand,
+				resolvedPath: runtimeStatus.rtkExecutablePath,
+				resolver,
+				warning: runtimeStatus.rtkExecutableResolutionWarning,
+			};
+		}
+		const decision = await computeRewriteDecision(event.input.command, config, pi, { executableResolution });
 		if (!decision.changed) {
+			if (decision.warning) {
+				warnOnce(ctx, formatRewriteWarning(decision.originalCommand, decision.warning));
+			}
 			return {};
 		}
 

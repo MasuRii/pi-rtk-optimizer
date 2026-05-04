@@ -7,6 +7,11 @@ interface ToolResultTextBlock {
 	[key: string]: unknown;
 }
 
+export interface StreamingBashExecutionSanitizationResult {
+	changed: boolean;
+	result: unknown;
+}
+
 function sanitizeStreamingBashText(text: string, command: string | undefined | null): string {
 	let nextText = stripAnsiFast(text);
 
@@ -24,17 +29,18 @@ function sanitizeStreamingBashText(text: string, command: string | undefined | n
 }
 
 /**
- * Sanitizes streamed bash result blocks before the TUI renders them so RTK
- * self-diagnostics never flash in partial or final tool output.
+ * Returns a sanitized shallow copy of streamed bash result blocks before the
+ * TUI renders them so RTK self-diagnostics never flash in partial or final
+ * tool output. The input object is not mutated.
  */
 export function sanitizeStreamingBashExecutionResult(
 	result: unknown,
 	command: string | undefined | null,
-): boolean {
+): StreamingBashExecutionSanitizationResult {
 	const resultRecord = toRecord(result);
 	const sourceContent = Array.isArray(resultRecord.content) ? resultRecord.content : null;
 	if (!sourceContent || sourceContent.length === 0) {
-		return false;
+		return { changed: false, result };
 	}
 
 	let changed = false;
@@ -61,9 +67,14 @@ export function sanitizeStreamingBashExecutionResult(
 	});
 
 	if (!changed) {
-		return false;
+		return { changed: false, result };
 	}
 
-	resultRecord.content = nextContent;
-	return true;
+	return {
+		changed: true,
+		result: {
+			...resultRecord,
+			content: nextContent,
+		},
+	};
 }

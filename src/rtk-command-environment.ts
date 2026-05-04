@@ -3,8 +3,12 @@ import { join } from "node:path";
 import { splitLeadingEnvAssignments } from "./shell-env-prefix.js";
 
 const RTK_DB_PATH_ENV_NAME = "RTK_DB_PATH";
-const RTK_DB_PATH_ASSIGNMENT_PATTERN = /(?:^|\s)RTK_DB_PATH=(?:"[^"]*"|'[^']*'|[^\s]+)(?=\s|$)/;
-const RTK_DB_PATH_EXPORT_PATTERN = /^export\s+RTK_DB_PATH=(?:"[^"]*"|'[^']*'|[^\s;]+)(?=\s*(?:;|$))/;
+const SINGLE_QUOTED_SHELL_VALUE_PATTERN = "'(?:'\\\\''|[^'])*'";
+const SHELL_ENV_VALUE_PATTERN = `(?:"[^"]*"|${SINGLE_QUOTED_SHELL_VALUE_PATTERN}|[^\\s;]+)`;
+const RTK_DB_PATH_ASSIGNMENT_PATTERN = new RegExp(
+	`(?:^|\\s)RTK_DB_PATH=${SHELL_ENV_VALUE_PATTERN}(?=\\s|$)`,
+);
+const RTK_DB_PATH_EXPORT_PATTERN = new RegExp(`^export\\s+RTK_DB_PATH=${SHELL_ENV_VALUE_PATTERN}(?=\\s*(?:;|$))`);
 
 function resolveTemporaryDirectory(): string {
 	if (process.platform === "win32") {
@@ -45,7 +49,7 @@ function getTemporaryRtkHistoryDbPath(): string {
 
 function quoteForShellEnv(value: string): string {
 	const normalizedValue = process.platform === "win32" ? value.replace(/\\/g, "/") : value;
-	return `"${normalizedValue.replace(/"/g, '\\"')}"`;
+	return `'${normalizedValue.replace(/'/g, `'\\''`)}'`;
 }
 
 function hasLeadingRtkDbPathAssignment(command: string): boolean {

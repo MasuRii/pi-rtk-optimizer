@@ -831,7 +831,7 @@ export class ZellijSettingsModal implements ZellijModalContentRenderer {
 			options.settings,
 			Math.min(Math.max(options.settings.length + 2, 6), 18),
 			getSettingsListTheme(),
-			(id, value) => {
+			(id: string, value: string) => {
 				this.options.onChange(id, value);
 			},
 			() => {

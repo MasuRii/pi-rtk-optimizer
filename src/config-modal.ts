@@ -53,12 +53,21 @@ function parseIntegerInRange(value: string, min: number, max: number): number | 
 	return parsed;
 }
 
-function summarizeConfig(config: RtkIntegrationConfig, runtimeStatus: RuntimeStatus): string {
+function summarizeRuntimeStatus(runtimeStatus: RuntimeStatus): string {
 	const runtime = runtimeStatus.rtkAvailable
 		? "rtk=available"
 		: `rtk=missing${runtimeStatus.lastError ? ` (${runtimeStatus.lastError})` : ""}`;
+	const executable = runtimeStatus.rtkExecutablePath
+		? `, rtkPath=${runtimeStatus.rtkExecutablePath}`
+		: runtimeStatus.rtkExecutableResolutionWarning
+			? `, rtkPath=unresolved (${runtimeStatus.rtkExecutableResolutionWarning})`
+			: "";
 
-	return `enabled=${config.enabled}, mode=${config.mode}, rewriteSource=rtk, rewriteNotice=${config.showRewriteNotifications}, compaction=${config.outputCompaction.enabled}, readCompaction=${config.outputCompaction.readCompaction.enabled}, sourceFilterEnabled=${config.outputCompaction.sourceCodeFilteringEnabled}, preserveSkillReads=${config.outputCompaction.preserveExactSkillReads}, sourceFilter=${config.outputCompaction.sourceCodeFiltering}, ${runtime}`;
+	return `${runtime}${executable}`;
+}
+
+function summarizeConfig(config: RtkIntegrationConfig, runtimeStatus: RuntimeStatus): string {
+	return `enabled=${config.enabled}, mode=${config.mode}, rewriteSource=rtk, rewriteNotice=${config.showRewriteNotifications}, compaction=${config.outputCompaction.enabled}, readCompaction=${config.outputCompaction.readCompaction.enabled}, sourceFilterEnabled=${config.outputCompaction.sourceCodeFilteringEnabled}, preserveSkillReads=${config.outputCompaction.preserveExactSkillReads}, sourceFilter=${config.outputCompaction.sourceCodeFiltering}, ${summarizeRuntimeStatus(runtimeStatus)}`;
 }
 
 function buildSettingItems(config: RtkIntegrationConfig): SettingItem[] {
@@ -474,7 +483,8 @@ async function handleArgs(
 	if (normalized === "verify") {
 		const runtimeStatus = await controller.refreshRuntimeStatus();
 		if (runtimeStatus.rtkAvailable) {
-			ctx.ui.notify("RTK binary is available.", "info");
+			const pathDetail = runtimeStatus.rtkExecutablePath ? ` at ${runtimeStatus.rtkExecutablePath}` : "";
+			ctx.ui.notify(`RTK binary is available${pathDetail}.`, "info");
 		} else {
 			ctx.ui.notify(
 				`RTK binary is not available${runtimeStatus.lastError ? `: ${runtimeStatus.lastError}` : ""}.`,

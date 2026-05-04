@@ -172,8 +172,34 @@ runTest("RTK command environment preserves explicit leading RTK_DB_PATH override
 	const command = 'RTK_DB_PATH="/custom/history.db" rtk git diff';
 	assert.equal(applyRtkCommandEnvironment(command), command);
 
+	const singleQuotedCommand = "RTK_DB_PATH='/custom/it'\\''s/history.db' rtk git diff";
+	assert.equal(applyRtkCommandEnvironment(singleQuotedCommand), singleQuotedCommand);
+
 	const exportedCommand = 'export RTK_DB_PATH="/custom/history.db"; rtk git diff';
 	assert.equal(applyRtkCommandEnvironment(exportedCommand), exportedCommand);
+});
+
+runTest("RTK command environment single-quotes hostile temp paths", () => {
+	const previousTmpDir = process.env.TMPDIR;
+	const previousTmp = process.env.TMP;
+	const previousTemp = process.env.TEMP;
+	const hostilePath = process.platform === "win32" ? "C:\\Temp\\$(touch owned)`bad`'dir" : "/tmp/$(touch owned)`bad`'dir";
+
+	try {
+		process.env.TMPDIR = hostilePath;
+		process.env.TMP = hostilePath;
+		process.env.TEMP = hostilePath;
+
+		const rewritten = applyRtkCommandEnvironment("rtk git status");
+		assert.ok(rewritten.startsWith("export RTK_DB_PATH='"));
+		assert.ok(rewritten.includes("$(touch owned)`bad`'\\''dir"));
+		assert.ok(rewritten.endsWith("; rtk git status"));
+		assert.equal(/^export RTK_DB_PATH=\"/.test(rewritten), false);
+	} finally {
+		process.env.TMPDIR = previousTmpDir;
+		process.env.TMP = previousTmp;
+		process.env.TEMP = previousTemp;
+	}
 });
 
 runTest("path compaction preserves the tail and handles Windows separators", () => {
@@ -194,72 +220,93 @@ runTest("path compaction preserves the tail and handles Windows separators", () 
 
 runTest("windows bash compatibility rewrites only when the runtime is Windows", () => {
 	const command = "cd /d C:\\Users\\Administrator\\project && python script.py";
-	const fixed = applyWindowsBashCompatibilityFixes(command);
+	const fixed = applyWindowsBashCompatibilityFixes(command, "win32");
+	assert.deepEqual(fixed.applied, ["cd-/d", "python-utf8"]);
+	assert.equal(
+		fixed.command,
+		'PYTHONIOENCODING=utf-8 cd "C:/Users/Administrator/project" && python script.py',
+	);
 
-	if (process.platform === "win32") {
-		assert.deepEqual(fixed.applied, ["cd-/d", "python-utf8"]);
-		assert.equal(
-			fixed.command,
-			'PYTHONIOENCODING=utf-8 cd "C:/Users/Administrator/project" && python script.py',
-		);
+	const unchanged = applyWindowsBashCompatibilityFixes(command, "linux");
+	assert.deepEqual(unchanged.applied, []);
+	assert.equal(unchanged.command, command);
 
-		const alreadyUtf8 = applyWindowsBashCompatibilityFixes("PYTHONIOENCODING=utf-8 python script.py");
-		assert.deepEqual(alreadyUtf8.applied, []);
-		assert.equal(alreadyUtf8.command, "PYTHONIOENCODING=utf-8 python script.py");
-	} else {
-		assert.deepEqual(fixed.applied, []);
-		assert.equal(fixed.command, command);
-	}
+	const alreadyUtf8 = applyWindowsBashCompatibilityFixes("PYTHONIOENCODING=utf-8 python script.py", "win32");
+	assert.deepEqual(alreadyUtf8.applied, []);
+	assert.equal(alreadyUtf8.command, "PYTHONIOENCODING=utf-8 python script.py");
+});
+
+runTest("windows bash compatibility rewrites compound cd slash-d operators", () => {
+	assert.equal(
+		applyWindowsBashCompatibilityFixes("cd /d C:\\work || echo failed", "win32").command,
+		'cd "C:/work" || echo failed',
+	);
+	assert.equal(
+		applyWindowsBashCompatibilityFixes("cd /d C:\\work ; echo done", "win32").command,
+		'cd "C:/work" ; echo done',
+	);
+	assert.equal(
+		applyWindowsBashCompatibilityFixes("cd /d C:\\work | cat", "win32").command,
+		'cd "C:/work" | cat',
+	);
+	assert.equal(
+		applyWindowsBashCompatibilityFixes('cd /d "C:\\work space" || echo failed', "win32").command,
+		'cd "C:/work space" || echo failed',
+	);
 });
 
 runTest("rewrite pipeline safety buffers rewritten Windows producer commands", () => {
-	const rewritten = applyRewrittenCommandShellSafetyFixups("rtk git diff | grep TODO");
+	const rewritten = applyRewrittenCommandShellSafetyFixups("rtk git diff | grep TODO", "win32");
+	assert.ok(rewritten.includes('mktemp'));
+	assert.ok(rewritten.includes('trap'));
+	assert.ok(rewritten.includes('rtk git diff > "$__pi_rtk_pipe_tmp"'));
+	assert.ok(rewritten.includes('(grep TODO) < "$__pi_rtk_pipe_tmp"'));
 
-	if (process.platform === "win32") {
-		assert.ok(rewritten.includes('mktemp'));
-		assert.ok(rewritten.includes('trap'));
-		assert.ok(rewritten.includes('rtk git diff > "$__pi_rtk_pipe_tmp"'));
-		assert.ok(rewritten.includes('(grep TODO) < "$__pi_rtk_pipe_tmp"'));
-	} else {
-		assert.equal(rewritten, "rtk git diff | grep TODO");
-	}
+	assert.equal(
+		applyRewrittenCommandShellSafetyFixups("rtk git diff | grep TODO", "linux"),
+		"rtk git diff | grep TODO",
+	);
+	assert.equal(applyRewrittenCommandShellSafetyFixups("git diff | grep TODO", "win32"), "git diff | grep TODO");
+});
 
-	assert.equal(applyRewrittenCommandShellSafetyFixups("git diff | grep TODO"), "git diff | grep TODO");
+runTest("rewrite pipeline safety buffers leading pipelines before compound suffixes", () => {
+	const andCommand = applyRewrittenCommandShellSafetyFixups("rtk git diff | grep TODO && echo done", "win32");
+	assert.ok(andCommand.includes('(grep TODO) < "$__pi_rtk_pipe_tmp"'));
+	assert.ok(andCommand.endsWith("&& echo done"));
+
+	const orCommand = applyRewrittenCommandShellSafetyFixups("rtk git diff | grep TODO || echo none", "win32");
+	assert.ok(orCommand.includes('(grep TODO) < "$__pi_rtk_pipe_tmp"'));
+	assert.ok(orCommand.endsWith("|| echo none"));
+
+	const semicolonCommand = applyRewrittenCommandShellSafetyFixups("rtk git diff | grep TODO; echo done", "win32");
+	assert.ok(semicolonCommand.includes('(grep TODO) < "$__pi_rtk_pipe_tmp"'));
+	assert.ok(semicolonCommand.endsWith("; echo done"));
 });
 
 runTest("rewrite pipeline safety keeps exported RTK_DB_PATH on rewritten producer commands", () => {
-	const rewritten = applyRewrittenCommandShellSafetyFixups(
-		applyRtkCommandEnvironment("rtk git diff agent/extensions/pi-multi-auth/account-manager.ts | head -200"),
-	);
+	const envScopedCommand = applyRtkCommandEnvironment("rtk git diff agent/extensions/pi-multi-auth/account-manager.ts | head -200");
+	const rewritten = applyRewrittenCommandShellSafetyFixups(envScopedCommand, "win32");
 
-	if (process.platform === "win32") {
-		assert.ok(rewritten.startsWith("export RTK_DB_PATH="));
-		assert.equal(rewritten.startsWith("RTK_DB_PATH="), false);
-		assert.ok(rewritten.includes("; {"));
-		assert.ok(
-			rewritten.includes('rtk git diff agent/extensions/pi-multi-auth/account-manager.ts > "$__pi_rtk_pipe_tmp"'),
-		);
-		assert.ok(rewritten.includes('(head -200) < "$__pi_rtk_pipe_tmp"'));
-	} else {
-		assert.ok(rewritten.startsWith("export RTK_DB_PATH="));
-		assert.equal(
-			rewritten,
-			applyRtkCommandEnvironment("rtk git diff agent/extensions/pi-multi-auth/account-manager.ts | head -200"),
-		);
-	}
+	assert.ok(rewritten.startsWith("export RTK_DB_PATH="));
+	assert.equal(rewritten.startsWith("RTK_DB_PATH="), false);
+	assert.ok(rewritten.includes("; {"));
+	assert.ok(
+		rewritten.includes('rtk git diff agent/extensions/pi-multi-auth/account-manager.ts > "$__pi_rtk_pipe_tmp"'),
+	);
+	assert.ok(rewritten.includes('(head -200) < "$__pi_rtk_pipe_tmp"'));
+
+	assert.equal(applyRewrittenCommandShellSafetyFixups(envScopedCommand, "linux"), envScopedCommand);
 });
 
 runTest("rewrite pipeline safety buffers explicit RTK_DB_PATH export preludes", () => {
 	const command = 'export RTK_DB_PATH="/custom/history.db"; rtk git diff | head -200';
-	const rewritten = applyRewrittenCommandShellSafetyFixups(command);
+	const rewritten = applyRewrittenCommandShellSafetyFixups(command, "win32");
 
-	if (process.platform === "win32") {
-		assert.ok(rewritten.startsWith('export RTK_DB_PATH="/custom/history.db"; {'));
-		assert.ok(rewritten.includes('rtk git diff > "$__pi_rtk_pipe_tmp"'));
-		assert.ok(rewritten.includes('(head -200) < "$__pi_rtk_pipe_tmp"'));
-	} else {
-		assert.equal(rewritten, command);
-	}
+	assert.ok(rewritten.startsWith('export RTK_DB_PATH="/custom/history.db"; {'));
+	assert.ok(rewritten.includes('rtk git diff > "$__pi_rtk_pipe_tmp"'));
+	assert.ok(rewritten.includes('(head -200) < "$__pi_rtk_pipe_tmp"'));
+
+	assert.equal(applyRewrittenCommandShellSafetyFixups(command, "linux"), command);
 });
 
 runTest("RTK command environment uses export prelude for shell compound commands", () => {
@@ -315,10 +362,15 @@ runTest("streaming sanitizer strips hook notices, sanitizes emoji output, and pr
 			},
 		],
 	};
-	assert.equal(sanitizeStreamingBashExecutionResult(hookNoticeResult, "rtk git status"), true);
+	const hookNoticeSanitization = sanitizeStreamingBashExecutionResult(hookNoticeResult, "rtk git status");
+	assert.equal(hookNoticeSanitization.changed, true);
+	assert.equal(
+		((hookNoticeSanitization.result as typeof hookNoticeResult).content[0] as { text: string }).text,
+		"working tree clean\n",
+	);
 	assert.equal(
 		(hookNoticeResult.content[0] as { text: string }).text,
-		"working tree clean\n",
+		"[rtk] /!\\ No hook installed — run `rtk init -g` for automatic token savings\n\nworking tree clean\n",
 	);
 
 	const emojiResult = {
@@ -327,9 +379,14 @@ runTest("streaming sanitizer strips hook notices, sanitizes emoji output, and pr
 			{ type: "image", url: "ignored" },
 		],
 	};
-	assert.equal(sanitizeStreamingBashExecutionResult(emojiResult, "rtk git diff -- src/file.ts"), true);
-	assert.equal((emojiResult.content[0] as { text: string }).text, "> src/file.ts\n[OK] Files are identical\n");
-	assert.deepEqual(emojiResult.content[1], { type: "image", url: "ignored" });
+	const emojiSanitization = sanitizeStreamingBashExecutionResult(emojiResult, "rtk git diff -- src/file.ts");
+	assert.equal(emojiSanitization.changed, true);
+	assert.equal(
+		((emojiSanitization.result as typeof emojiResult).content[0] as { text: string }).text,
+		"> src/file.ts\n[OK] Files are identical\n",
+	);
+	assert.equal((emojiResult.content[0] as { text: string }).text, "📄 src/file.ts\n✅ Files are identical\n");
+	assert.deepEqual((emojiSanitization.result as typeof emojiResult).content[1], { type: "image", url: "ignored" });
 
 	const parseWarningResult = {
 		content: [
@@ -339,7 +396,9 @@ runTest("streaming sanitizer strips hook notices, sanitizes emoji output, and pr
 			},
 		],
 	};
-	assert.equal(sanitizeStreamingBashExecutionResult(parseWarningResult, "rtk git status"), false);
+	const parseWarningSanitization = sanitizeStreamingBashExecutionResult(parseWarningResult, "rtk git status");
+	assert.equal(parseWarningSanitization.changed, false);
+	assert.equal(parseWarningSanitization.result, parseWarningResult);
 	assert.equal(
 		(parseWarningResult.content[0] as { text: string }).text,
 		"[rtk] warning: builtin filters: parse failure\n\nworking tree clean\n",

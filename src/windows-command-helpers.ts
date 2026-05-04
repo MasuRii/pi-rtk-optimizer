@@ -3,6 +3,12 @@ interface WindowsBashCompatibilityResult {
 	applied: string[];
 }
 
+interface LeadingCdSlashDParse {
+	rawPath: string;
+	operator: string;
+	tail: string;
+}
+
 const PYTHON_UTF8_ENV_PREFIX = "PYTHONIOENCODING=utf-8";
 
 function normalizeWindowsPathForBash(rawPath: string): string {
@@ -20,29 +26,96 @@ function quoteForBash(value: string): string {
 	return `"${escaped}"`;
 }
 
-function rewriteLeadingCdSlashD(command: string): { command: string; changed: boolean } {
-	const withTailMatch = command.match(/^\s*cd\s+\/d\s+(.+?)\s*&&\s*([\s\S]+)$/i);
-	if (withTailMatch) {
-		const rawPath = withTailMatch[1] ?? "";
-		const tail = withTailMatch[2] ?? "";
-		const normalizedPath = quoteForBash(normalizeWindowsPathForBash(rawPath));
-		return {
-			command: `cd ${normalizedPath} && ${tail}`,
-			changed: true,
-		};
+function parseLeadingCdSlashD(command: string): LeadingCdSlashDParse | null {
+	const prefixMatch = command.match(/^\s*cd\s+\/d\s+/i);
+	if (!prefixMatch) {
+		return null;
 	}
 
-	const onlyCdMatch = command.match(/^\s*cd\s+\/d\s+(.+)$/i);
-	if (onlyCdMatch) {
-		const rawPath = onlyCdMatch[1] ?? "";
-		const normalizedPath = quoteForBash(normalizeWindowsPathForBash(rawPath));
+	const pathStart = prefixMatch[0].length;
+	let quote: '"' | "'" | null = null;
+	let escaped = false;
+
+	for (let index = pathStart; index < command.length; index += 1) {
+		const character = command[index] ?? "";
+		const nextCharacter = command[index + 1] ?? "";
+
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+
+		if (quote !== null) {
+			if (character === "\\" && quote !== "'") {
+				escaped = true;
+				continue;
+			}
+			if (character === quote) {
+				quote = null;
+			}
+			continue;
+		}
+
+		if (character === "\\") {
+			escaped = true;
+			continue;
+		}
+
+		if (character === '"' || character === "'") {
+			quote = character;
+			continue;
+		}
+
+		if (character === "&" && nextCharacter === "&") {
+			return {
+				rawPath: command.slice(pathStart, index),
+				operator: "&&",
+				tail: command.slice(index + 2),
+			};
+		}
+
+		if (character === "|" && nextCharacter === "|") {
+			return {
+				rawPath: command.slice(pathStart, index),
+				operator: "||",
+				tail: command.slice(index + 2),
+			};
+		}
+
+		if (character === "|" || character === ";") {
+			return {
+				rawPath: command.slice(pathStart, index),
+				operator: character,
+				tail: command.slice(index + 1),
+			};
+		}
+	}
+
+	return {
+		rawPath: command.slice(pathStart),
+		operator: "",
+		tail: "",
+	};
+}
+
+function rewriteLeadingCdSlashD(command: string): { command: string; changed: boolean } {
+	const parsed = parseLeadingCdSlashD(command);
+	if (!parsed) {
+		return { command, changed: false };
+	}
+
+	const normalizedPath = quoteForBash(normalizeWindowsPathForBash(parsed.rawPath));
+	if (!parsed.operator) {
 		return {
 			command: `cd ${normalizedPath}`,
 			changed: true,
 		};
 	}
 
-	return { command, changed: false };
+	return {
+		command: `cd ${normalizedPath} ${parsed.operator} ${parsed.tail.trimStart()}`,
+		changed: true,
+	};
 }
 
 function ensurePythonUtf8(command: string): { command: string; changed: boolean } {
@@ -60,8 +133,11 @@ function ensurePythonUtf8(command: string): { command: string; changed: boolean 
 	};
 }
 
-export function applyWindowsBashCompatibilityFixes(command: string): WindowsBashCompatibilityResult {
-	if (process.platform !== "win32") {
+export function applyWindowsBashCompatibilityFixes(
+	command: string,
+	platform: string = process.platform,
+): WindowsBashCompatibilityResult {
+	if (platform !== "win32") {
 		return { command, applied: [] };
 	}
 

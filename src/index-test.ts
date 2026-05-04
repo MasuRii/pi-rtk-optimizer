@@ -28,8 +28,32 @@ mock.module("@mariozechner/pi-tui", () => ({
 	visibleWidth: (text: string) => text.length,
 }));
 
-const { createBoundedNoticeTracker, shouldInjectSourceFilterTroubleshootingNote } = await import("./index.ts");
+const indexModule = await import("./index.ts");
+const { createBoundedNoticeTracker, shouldInjectSourceFilterTroubleshootingNote } = indexModule;
+const rtkIntegrationExtension = indexModule.default;
 const { DEFAULT_RTK_INTEGRATION_CONFIG } = await import("./types.ts");
+
+type Notification = { message: string; level: "info" | "warning" | "error" };
+type ExtensionHandler = (event: Record<string, unknown>, ctx: Record<string, unknown>) => Promise<Record<string, unknown> | void>;
+
+function createNotificationContext(notifications: Notification[]): Record<string, unknown> {
+	return {
+		hasUI: true,
+		ui: {
+			notify(message: string, level: "info" | "warning" | "error") {
+				notifications.push({ message, level });
+			},
+		},
+	};
+}
+
+function firstText(content: unknown): string {
+	if (!Array.isArray(content) || content.length === 0) {
+		return "";
+	}
+	const block = content[0] as { type?: string; text?: string };
+	return block.type === "text" && typeof block.text === "string" ? block.text : "";
+}
 
 function configWith(overrides: {
 	enabled?: boolean;
@@ -158,6 +182,177 @@ runTest("source-filter note skipped when all read filtering safeguards are disab
 		),
 		false,
 	);
+});
+
+await runTest("session_start refreshes RTK provenance and runtime guard skips missing rewrites", async () => {
+	const handlers: Record<string, ExtensionHandler> = {};
+	const notifications: Notification[] = [];
+	const execCommands: string[] = [];
+	let rtkAvailable = false;
+	let rewriteCalls = 0;
+
+	rtkIntegrationExtension({
+		exec: async (command: string, args: string[]) => {
+			execCommands.push(command);
+			if (command === "which" || command === "where") {
+				return { code: 0, stdout: "/opt/rtk/bin/rtk\n", stderr: "" };
+			}
+			if (args[0] === "--version") {
+				return rtkAvailable
+					? { code: 0, stdout: "rtk 1.0.0", stderr: "" }
+					: { code: 1, stdout: "", stderr: "missing rtk" };
+			}
+			if (args[0] === "rewrite") {
+				rewriteCalls += 1;
+				return { code: 3, stdout: "rtk git status", stderr: "" };
+			}
+			return { code: 1, stdout: "", stderr: "unexpected" };
+		},
+		on(eventName: string, handler: ExtensionHandler) {
+			handlers[eventName] = handler;
+		},
+		registerCommand() {},
+	} as never);
+
+	const sessionStartHandler = handlers.session_start;
+	const toolCallHandler = handlers.tool_call;
+	assert.ok(sessionStartHandler);
+	assert.ok(toolCallHandler);
+
+	await sessionStartHandler({}, createNotificationContext(notifications));
+	const skippedEvent = { toolName: "bash", input: { command: "git status" } };
+	await toolCallHandler(skippedEvent, createNotificationContext(notifications));
+
+	assert.equal((skippedEvent.input as { command: string }).command, "git status");
+	assert.equal(rewriteCalls, 0);
+	assert.ok(notifications.some((notice) => notice.message.includes("rtk binary unavailable")));
+
+	rtkAvailable = true;
+	await sessionStartHandler({}, createNotificationContext(notifications));
+	const rewrittenEvent = { toolName: "bash", input: { command: "git status" } };
+	await toolCallHandler(rewrittenEvent, createNotificationContext(notifications));
+
+	assert.equal(rewriteCalls, 1);
+	assert.ok((rewrittenEvent.input as { command: string }).command.includes("rtk git status"));
+	assert.ok(execCommands.includes("/opt/rtk/bin/rtk"));
+});
+
+await runTest("tool execution lifecycle sanitizes streamed bash output", async () => {
+	const handlers: Record<string, ExtensionHandler> = {};
+
+	rtkIntegrationExtension({
+		exec: async () => ({ code: 0, stdout: "rtk 1.0.0", stderr: "" }),
+		on(eventName: string, handler: ExtensionHandler) {
+			handlers[eventName] = handler;
+		},
+		registerCommand() {},
+	} as never);
+
+	const startHandler = handlers.tool_execution_start;
+	const updateHandler = handlers.tool_execution_update;
+	const endHandler = handlers.tool_execution_end;
+	assert.ok(startHandler);
+	assert.ok(updateHandler);
+	assert.ok(endHandler);
+
+	await startHandler(
+		{ toolName: "bash", toolCallId: "bash-1", args: { command: "rtk git status" } },
+		{},
+	);
+	const updateEvent = {
+		toolName: "bash",
+		toolCallId: "bash-1",
+		args: { command: "rtk git status" },
+		partialResult: {
+			content: [
+				{
+					type: "text",
+					text: "[rtk] /!\\ No hook installed — run `rtk init -g` for automatic token savings\n\nworking tree clean\n",
+				},
+			],
+		},
+	};
+	await updateHandler(updateEvent, {});
+	assert.equal(firstText(updateEvent.partialResult.content), "working tree clean\n");
+
+	const endEvent = {
+		toolName: "bash",
+		toolCallId: "bash-1",
+		result: { content: [{ type: "text", text: "📄 src/file.ts\n✅ Files are identical\n" }] },
+	};
+	await endHandler(endEvent, {});
+	assert.equal(firstText(endEvent.result.content), "> src/file.ts\n[OK] Files are identical\n");
+});
+
+await runTest("tool_result lifecycle merges compaction metadata with existing details", async () => {
+	const handlers: Record<string, ExtensionHandler> = {};
+	const notifications: Notification[] = [];
+
+	rtkIntegrationExtension({
+		exec: async () => ({ code: 0, stdout: "rtk 1.0.0", stderr: "" }),
+		on(eventName: string, handler: ExtensionHandler) {
+			handlers[eventName] = handler;
+		},
+		registerCommand() {},
+	} as never);
+
+	const toolResultHandler = handlers.tool_result;
+	assert.ok(toolResultHandler);
+	const result = await toolResultHandler(
+		{
+			toolName: "grep",
+			input: { pattern: "TODO" },
+			content: [{ type: "text", text: "src/a.ts:1:TODO\nsrc/b.ts:2:TODO\n" }],
+			details: { metadata: { requestId: "abc" }, traceId: "trace-1" },
+		},
+		createNotificationContext(notifications),
+	);
+
+	assert.ok(result);
+	assert.ok(firstText(result.content).startsWith("2 matches in 2 files:"));
+	assert.equal((result.details as { traceId?: string }).traceId, "trace-1");
+	const details = result.details as { rtkCompaction?: { applied: boolean }; metadata?: Record<string, unknown> };
+	assert.equal(details.rtkCompaction?.applied, true);
+	assert.deepEqual(details.metadata?.requestId, "abc");
+	assert.equal((details.metadata?.rtkCompaction as { applied?: boolean } | undefined)?.applied, true);
+	assert.equal(notifications.length, 0);
+});
+
+await runTest("tool_call surfaces RTK rewrite errors through existing UI warning path", async () => {
+	const handlers: Record<string, (event: Record<string, unknown>, ctx: Record<string, unknown>) => Promise<Record<string, unknown> | void>> = {};
+	const notifications: Notification[] = [];
+
+	rtkIntegrationExtension({
+		exec: async (_command: string, args: string[]) => {
+			if (args[0] === "--version") {
+				return { code: 0, stdout: "rtk 1.0.0", stderr: "" };
+			}
+
+			return { code: 2, stdout: "", stderr: "denied unsafe rewrite" };
+		},
+		on(eventName: string, handler: (event: Record<string, unknown>, ctx: Record<string, unknown>) => Promise<Record<string, unknown> | void>) {
+			handlers[eventName] = handler;
+		},
+		registerCommand() {},
+	} as never);
+
+	const toolCallHandler = handlers.tool_call;
+	assert.ok(toolCallHandler);
+	const event = { toolName: "bash", input: { command: "git status" } };
+	await toolCallHandler(event, {
+		hasUI: true,
+		ui: {
+			notify(message: string, level: "info" | "warning" | "error") {
+				notifications.push({ message, level });
+			},
+		},
+	});
+
+	assert.equal((event.input as { command: string }).command, "git status");
+	assert.equal(notifications.length, 1);
+	assert.equal(notifications[0]?.level, "warning");
+	assert.ok(notifications[0]?.message.includes("rtk rewrite skipped"));
+	assert.ok(notifications[0]?.message.includes("denied unsafe rewrite"));
 });
 
 console.log("All index tests passed.");
