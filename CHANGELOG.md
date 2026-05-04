@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-05-04
+
+### Changed
+- Clarified the README architecture inventory for delegated `rtk rewrite` ownership and documented Bun as a development verification prerequisite.
+- Pinned TypeScript and esbuild as dev dependencies so build and bundle checks use locked local tooling.
+- Added RTK executable path visibility to runtime verification output and documented audit/debug config expectations.
+
+### Fixed
+- Hardened `RTK_DB_PATH` shell quoting against inherited temp paths containing command-substitution syntax.
+- Made the custom test helper await async tests before reporting pass.
+- Preserved RTK rewrite error details through the extension's existing UI warning path.
+- Expanded Windows command and rewritten-pipeline fixups for leading compound-command cases.
+- Normalized compaction technique return handling while preserving existing output behavior.
+- Added lifecycle and vendored modal regression coverage for high-risk extension event paths.
+
 ## [0.7.0] - 2026-04-30
 
 ### Added
@@ -14,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Updated README and example configuration defaults for safer read-compaction behavior and troubleshooting guidance.
-- Updated `@mariozechner/pi-coding-agent` and `@mariozechner/pi-tui` peer dependencies to ^0.70.6.
+- Updated `@mariozechner/pi-coding-agent` and `@mariozechner/pi-tui` peer dependencies to ^0.72.0.
 
 ## [0.6.0] - 2026-04-27
 
