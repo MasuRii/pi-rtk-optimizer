@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Widened Pi peer dependency ranges to include versions 0.76 through 0.79.
+
 ## [0.8.2] - 2026-06-01
 
 ### Changed
