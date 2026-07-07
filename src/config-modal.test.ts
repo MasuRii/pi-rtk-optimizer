@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+import type { SettingItem } from "@earendil-works/pi-tui";
 import { cloneDefaultConfig, mock, runTest } from "./test-helpers.test.ts";
 
 mock.module("@earendil-works/pi-coding-agent", {
@@ -31,11 +32,27 @@ mock.module("@earendil-works/pi-tui", {
 			updateValue(id: string, value: string): void {
 				settingsListUpdates.push({ id, value });
 			}
+			render(): string[] {
+				return ["settings-content"];
+			}
 		},
 		Spacer: class {},
 		Text: class {},
 		truncateToWidth: (text: string, width: number) => text.slice(0, width),
 		visibleWidth: (text: string) => text.length,
+		// Faithful subset of the real pi-tui matchesKey(): recognize both the
+		// legacy bare sequence (\x1b[D) and the kitty-keyboard-protocol
+		// disambiguated form (\x1b[1;1D) for unmodified left/right arrows.
+		// This lets tab-switch tests prove the fix works under kitty protocol.
+		matchesKey: (data: string, keyId: string): boolean => {
+			if (keyId === "left") {
+				return data === "\x1b[D" || data === "\x1b[1;1D";
+			}
+			if (keyId === "right") {
+				return data === "\x1b[C" || data === "\x1b[1;1C";
+			}
+			return false;
+		},
 	},
 });
 
@@ -131,6 +148,97 @@ runTest("zellij settings modal renders overlay frame and delegates non-enter inp
 	});
 	assert.deepEqual(settingsListInputs, ["j"]);
 	assert.deepEqual(settingsListUpdates, [{ id: "enabled", value: "off" }]);
+});
+
+// Build a tabbed settings modal (3 tabs) for tab-navigation tests.
+// With the test theme stub (no color wrapping), the active tab renders as
+// `[ Label ]` while inactive tabs render as `  Label  ` (no brackets),
+// so the active tab is observable through render() output without ANSI.
+function createTabbedSettingsModal(): ZellijSettingsModal {
+	const tabSetting = (id: string): SettingItem => ({
+		id,
+		label: id,
+		description: `${id} setting`,
+		currentValue: "on",
+		values: ["on", "off"],
+	});
+	return new ZellijSettingsModal(
+		{
+			title: "RTK Integration Settings",
+			tabs: [
+				{ label: "General", settings: [tabSetting("general")] },
+				{ label: "Compaction", settings: [tabSetting("compaction")] },
+				{ label: "Read", settings: [tabSetting("read")] },
+			],
+			activeTabIndex: 0,
+			onChange: () => {},
+			onClose: () => {},
+			helpText: "Esc: close",
+		},
+		createThemeStub() as never,
+	);
+}
+
+// Returns the tab-bar line (with brackets stripped) from a tabbed modal render.
+function renderTabBarLine(modal: ZellijSettingsModal): string {
+	const lines = modal.render(86);
+	// render() layout for tabbed modals: [title, "", tabBar, "", ...].
+	return stripAnsi(lines[2] ?? "");
+}
+
+runTest("tabbed settings modal switches tabs on legacy left/right arrow keys", () => {
+	const modal = createTabbedSettingsModal();
+
+	// Starts on General (index 0).
+	assert.ok(renderTabBarLine(modal).includes("[ General ]"));
+
+	// Right arrow advances to Compaction, then Read.
+	modal.handleInput("\x1b[C");
+	assert.ok(renderTabBarLine(modal).includes("[ Compaction ]"));
+	modal.handleInput("\x1b[C");
+	assert.ok(renderTabBarLine(modal).includes("[ Read ]"));
+
+	// Right arrow wraps around to General.
+	modal.handleInput("\x1b[C");
+	assert.ok(renderTabBarLine(modal).includes("[ General ]"));
+
+	// Left arrow wraps backwards to Read.
+	modal.handleInput("\x1b[D");
+	assert.ok(renderTabBarLine(modal).includes("[ Read ]"));
+
+	// Left arrow goes back to Compaction.
+	modal.handleInput("\x1b[D");
+	assert.ok(renderTabBarLine(modal).includes("[ Compaction ]"));
+});
+
+runTest("tabbed settings modal switches tabs on kitty-protocol encoded arrows", () => {
+	// Regression: pi-tui 0.80.x enables kitty keyboard protocol, which re-encodes
+	// bare arrows as \x1b[1;1D / \x1b[1;1C. The old strict compare against
+	// \x1b[D / \x1b[C silently dropped these, making tabs unswitchable in
+	// Ghostty/kitty/WezTerm. matchesKey normalizes both encodings.
+	const modal = createTabbedSettingsModal();
+
+	assert.ok(renderTabBarLine(modal).includes("[ General ]"));
+
+	modal.handleInput("\x1b[1;1C");
+	assert.ok(renderTabBarLine(modal).includes("[ Compaction ]"));
+
+	modal.handleInput("\x1b[1;1D");
+	assert.ok(renderTabBarLine(modal).includes("[ General ]"));
+});
+
+runTest("tabbed settings modal does not switch tabs on modified arrows", () => {
+	// Modified arrows (Shift/Ctrl/Alt) must not match bare left/right, so they
+	// fall through to the settings list instead of switching tabs. This guards
+	// against matchesKey over-matching.
+	settingsListInputs.length = 0;
+	const modal = createTabbedSettingsModal();
+
+	modal.handleInput("\x1b[1;5C"); // Ctrl+Right
+	modal.handleInput("\x1b[1;3D"); // Alt+Left
+	assert.ok(renderTabBarLine(modal).includes("[ General ]"));
+	// Modified arrows forwarded to the active settings list, not swallowed.
+	assert.deepEqual(settingsListInputs, ["\x1b[1;5C", "\x1b[1;3D"]);
 });
 
 runTest("command completions return top-level and filtered RTK subcommands", () => {

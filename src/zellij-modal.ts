@@ -4,6 +4,7 @@ import { getSettingsListTheme, type ExtensionAPI, type Theme } from "@earendil-w
 import {
 	Box,
 	Container,
+	matchesKey,
 	SettingsList,
 	Spacer,
 	Text,
@@ -965,11 +966,11 @@ export class ZellijSettingsModal implements ZellijModalContentRenderer {
 		if (isEnterActivationInput(data)) {
 			return;
 		}
-		if (this.showTabs && data === "\x1b[D") {
+		if (this.showTabs && matchesKey(data, "left")) {
 			this.switchTab(-1);
 			return;
 		}
-		if (this.showTabs && data === "\x1b[C") {
+		if (this.showTabs && matchesKey(data, "right")) {
 			this.switchTab(1);
 			return;
 		}
