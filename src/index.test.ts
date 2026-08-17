@@ -308,6 +308,81 @@ await runTest("session_start refreshes RTK provenance and runtime guard skips mi
 	assert.ok(execCommands.includes("/opt/rtk/bin/rtk"));
 });
 
+await runTest("exec_command lifecycle rewrites cmd, sanitizes and compacts output", async () => {
+	const handlers: Record<string, ExtensionHandler> = {};
+	const notifications: Notification[] = [];
+	let rewriteCalls = 0;
+
+	rtkIntegrationExtension({
+		exec: async (command: string, args: string[]) => {
+			if (command === "which" || command === "where") {
+				return { code: 0, stdout: "/opt/rtk/bin/rtk\n", stderr: "" };
+			}
+			if (args[0] === "--version") {
+				return { code: 0, stdout: "rtk 1.0.0", stderr: "" };
+			}
+			if (args[0] === "rewrite") {
+				rewriteCalls += 1;
+				return { code: 3, stdout: "rtk git status", stderr: "" };
+			}
+			return { code: 1, stdout: "", stderr: "unexpected" };
+		},
+		on(eventName: string, handler: ExtensionHandler) {
+			handlers[eventName] = handler;
+		},
+		registerCommand() {},
+	} as never);
+
+	await handlers.session_start({}, createNotificationContext(notifications));
+
+	const toolCallHandler = handlers.tool_call;
+	assert.ok(toolCallHandler);
+	const execCommandEvent = { toolName: "exec_command", input: { cmd: "git status" } };
+	await toolCallHandler(execCommandEvent, createNotificationContext(notifications));
+	assert.equal(rewriteCalls, 1);
+	assert.ok((execCommandEvent.input as { cmd: string }).cmd.includes("rtk git status"));
+
+	const startHandler = handlers.tool_execution_start;
+	const updateHandler = handlers.tool_execution_update;
+	const endHandler = handlers.tool_execution_end;
+	const toolResultHandler = handlers.tool_result;
+	assert.ok(startHandler);
+	assert.ok(updateHandler);
+	assert.ok(endHandler);
+	assert.ok(toolResultHandler);
+
+	await startHandler({ toolName: "exec_command", toolCallId: "exec-1", args: { cmd: "rtk git status" } }, {});
+	const updateEvent = {
+		toolName: "exec_command",
+		toolCallId: "exec-1",
+		args: { cmd: "rtk git status" },
+		partialResult: { content: [{ type: "text", text: "\x1B[32mclean\x1B[0m\n" }] },
+	};
+	await updateHandler(updateEvent, {});
+	assert.equal(firstText(updateEvent.partialResult.content), "clean\n");
+
+	const endEvent = {
+		toolName: "exec_command",
+		toolCallId: "exec-1",
+		result: { content: [{ type: "text", text: "\x1B[31merror: failed\x1B[0m\n" }] },
+	};
+	await endHandler(endEvent, {});
+	assert.equal(firstText(endEvent.result.content), "error: failed\n");
+
+	const result = await toolResultHandler(
+		{
+			toolName: "exec_command",
+			input: { cmd: "rtk git status" },
+			content: [{ type: "text", text: "\x1B[36mnothing to commit\x1B[0m\n" }],
+			details: undefined,
+		},
+		createNotificationContext(notifications),
+	);
+	const compacted = result as { content?: Array<{ type: string; text: string }> };
+	assert.ok(compacted.content);
+	assert.ok(!firstText(compacted.content).includes("\x1B[36m"), "ANSI codes must be stripped from exec_command output");
+});
+
 await runTest("tool execution lifecycle sanitizes streamed bash output", async () => {
 	const handlers: Record<string, ExtensionHandler> = {};
 

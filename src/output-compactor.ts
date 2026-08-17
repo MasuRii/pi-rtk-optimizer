@@ -135,9 +135,11 @@ function toArray(value: unknown): unknown[] {
 }
 
 function normalizeCommand(input: Record<string, unknown>): string | undefined {
-	const raw = input.command;
-	if (typeof raw === "string" && raw.trim()) {
-		return raw;
+	for (const key of ["command", "cmd"] as const) {
+		const raw = input[key];
+		if (typeof raw === "string" && raw.trim()) {
+			return raw;
+		}
 	}
 	return undefined;
 }
@@ -640,7 +642,7 @@ export function compactToolResult(
 
 	const { changed, mapped: nextContent } = mapTextContentBlocks(sourceContent, (contentBlock) => {
 		let transformed = { text: contentBlock.text, techniques: [] as string[] };
-		if (event.toolName === "bash") {
+		if (event.toolName === "bash" || event.toolName === "exec_command" || event.toolName === "write_stdin") {
 			transformed = compactBashText(contentBlock.text, normalizeCommand(input), config);
 		} else if (event.toolName === "read") {
 			const normalizedPath = normalizePath(input);
