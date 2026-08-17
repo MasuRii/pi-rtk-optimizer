@@ -202,13 +202,34 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 		activeBashCommands.clear();
 	};
 
+/**
+ * Shell tool names whose output is compacted like bash output.
+ * Includes the pi-unified-exec session tools: `exec_command` runs the command
+ * (input field `cmd`), `write_stdin` polls/drives an existing session.
+ */
+const SHELL_OUTPUT_TOOL_NAMES = new Set(["bash", "exec_command", "write_stdin"]);
+
+function isShellOutputToolName(toolName: unknown): boolean {
+	return typeof toolName === "string" && SHELL_OUTPUT_TOOL_NAMES.has(toolName);
+}
+
+function extractShellCommand(args: unknown): string {
+	const argsRecord = toRecord(args);
+	for (const key of ["command", "cmd"] as const) {
+		const raw = argsRecord[key];
+		if (typeof raw === "string" && raw.trim()) {
+			return raw.trim();
+		}
+	}
+	return "";
+}
+
 	const trackBashCommand = (toolCallId: unknown, args: unknown): void => {
 		if (typeof toolCallId !== "string") {
 			return;
 		}
 
-		const argsRecord = toRecord(args);
-		const command = typeof argsRecord.command === "string" ? argsRecord.command.trim() : "";
+		const command = extractShellCommand(args);
 		if (!command) {
 			activeBashCommands.delete(toolCallId);
 			return;
@@ -246,7 +267,7 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 		}
 
 		const eventRecord = toRecord(event);
-		if (eventRecord.toolName !== "bash") {
+		if (!isShellOutputToolName(eventRecord.toolName)) {
 			return null;
 		}
 
@@ -404,7 +425,7 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 
 	pi.on("tool_execution_end", async (event) => {
 		const eventRecord = toRecord(event);
-		if (eventRecord.toolName !== "bash") {
+		if (!isShellOutputToolName(eventRecord.toolName)) {
 			return;
 		}
 
@@ -451,14 +472,25 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 			return {};
 		}
 
-		if (!isToolCallEventType("bash", event)) {
+		const toolCallRecord = toRecord(event);
+		const isBashToolCall = isToolCallEventType("bash", event);
+		const isExecCommandToolCall = toolCallRecord.toolName === "exec_command";
+		if (!isBashToolCall && !isExecCommandToolCall) {
+			return {};
+		}
+
+		// unified-exec's exec_command carries the shell command in `cmd`.
+		const inputRecord = toRecord(event.input);
+		const commandField = isExecCommandToolCall ? "cmd" : "command";
+		const rawCommand = typeof inputRecord[commandField] === "string" ? inputRecord[commandField] : "";
+		if (!rawCommand) {
 			return {};
 		}
 
 		if (config.mode === "rewrite") {
-			const compatibility = applyWindowsBashCompatibilityFixes(event.input.command);
-			if (compatibility.command !== event.input.command) {
-				event.input.command = compatibility.command;
+			const compatibility = applyWindowsBashCompatibilityFixes(rawCommand);
+			if (compatibility.command !== rawCommand) {
+				inputRecord[commandField] = compatibility.command;
 			}
 		}
 
@@ -478,7 +510,7 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 				warning: runtimeStatus.rtkExecutableResolutionWarning,
 			};
 		}
-		const decision = await computeRewriteDecision(event.input.command, config, pi, { executableResolution });
+		const decision = await computeRewriteDecision(rawCommand, config, pi, { executableResolution });
 		if (!decision.changed) {
 			if (decision.warning) {
 				warnOnce(ctx, formatRewriteWarning(decision.originalCommand, decision.warning));
@@ -491,7 +523,7 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 				ctx.ui.notify(formatRewriteNotice(decision.originalCommand, decision.rewrittenCommand), "info");
 			}
 			const envScopedRewrittenCommand = applyRtkCommandEnvironment(decision.rewrittenCommand);
-			event.input.command = applyRewrittenCommandShellSafetyFixups(envScopedRewrittenCommand);
+			inputRecord[commandField] = applyRewrittenCommandShellSafetyFixups(envScopedRewrittenCommand);
 			return {};
 		}
 
