@@ -20,6 +20,8 @@ import { shouldRequireRtkAvailabilityForCommandHandling, shouldSkipCommandHandli
 import { sanitizeStreamingBashExecutionResult } from "./tool-execution-sanitizer.js";
 import type { RtkIntegrationConfig, RuntimeStatus } from "./types.js";
 import { applyWindowsBashCompatibilityFixes } from "./windows-command-helpers.js";
+import "./config-modal.ts";
+import "./output-compactor.ts";
 
 function trimMessage(raw: string, maxLength = 220): string {
 	const clean = raw.replace(/\s+/g, " ").trim();
@@ -87,7 +89,7 @@ export function injectGuidelineIntoPrompt(systemPrompt: string, guideline: strin
 	return [before, needsNewlineBefore ? "\n" : "", bullet, needsNewlineAfter ? "\n" : "", after].join("");
 }
 
-const loadOutputCompactorModule = createLazyModuleLoader<typeof import("./output-compactor.js")>("./output-compactor.js");
+const loadOutputCompactorModule = createLazyModuleLoader<typeof import("./output-compactor.ts")>("./output-compactor.ts");
 
 export function shouldInjectSourceFilterTroubleshootingNote(config: RtkIntegrationConfig): boolean {
 	const compaction = config.outputCompaction;
