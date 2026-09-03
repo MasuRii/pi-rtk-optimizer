@@ -13,7 +13,7 @@ export interface RtkIntegrationController {
 	clearMetrics(): void;
 }
 
-const loadCommandModalModule = createLazyModuleLoader<typeof import("./config-modal.js")>("./config-modal.js");
+const loadCommandModalModule = createLazyModuleLoader<typeof import("./config-modal.ts")>("./config-modal.ts");
 
 export function registerRtkIntegrationCommand(pi: ExtensionAPI, controller: RtkIntegrationController): void {
 	pi.registerCommand("rtk", {
