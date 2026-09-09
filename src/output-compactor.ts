@@ -20,6 +20,7 @@ import type { RtkIntegrationConfig } from "./types.js";
 interface ToolResultLikeEvent {
 	toolName: string;
 	input?: unknown;
+	isError?: boolean;
 	content?: unknown;
 }
 
@@ -541,11 +542,12 @@ function compactBashText(
 	text: string,
 	command: string | undefined,
 	config: RtkIntegrationConfig,
+	isError?: boolean,
 ): { text: string; techniques: string[] } {
 	const { state, compaction } = beginCompaction(text, config);
 
 	applyConditionalTechnique(state, compaction.filterBuildOutput, (t) => filterBuildOutput(t, command), "build");
-	applyConditionalTechnique(state, compaction.aggregateTestOutput, (t) => aggregateTestOutput(t, command), "test");
+	applyConditionalTechnique(state, compaction.aggregateTestOutput, (t) => aggregateTestOutput(t, command, isError), "test");
 	applyConditionalTechnique(state, compaction.compactGitOutput, (t) => compactGitOutput(t, command), "git");
 	applyConditionalTechnique(state, compaction.aggregateLinterOutput, (t) => aggregateLinterOutput(t, command), "linter");
 
@@ -641,7 +643,7 @@ export function compactToolResult(
 	const { changed, mapped: nextContent } = mapTextContentBlocks(sourceContent, (contentBlock) => {
 		let transformed = { text: contentBlock.text, techniques: [] as string[] };
 		if (event.toolName === "bash") {
-			transformed = compactBashText(contentBlock.text, normalizeCommand(input), config);
+			transformed = compactBashText(contentBlock.text, normalizeCommand(input), config, event.isError);
 		} else if (event.toolName === "read") {
 			const normalizedPath = normalizePath(input);
 			transformed = compactReadText(

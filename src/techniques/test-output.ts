@@ -7,6 +7,11 @@ interface TestSummary {
 	failures: string[];
 }
 
+// Vitest 5.x puts failed BEFORE passed, pipe-separated ("Tests  4 failed | 39 passed (43)"), not the "N passed, M failed" comma-order every pattern below assumes - see this script's header comment for the reproduction.
+// Checked first, before the generic patterns.
+const VITEST_SUMMARY_PATTERN =
+	/Tests\s+(?:(\d+)\s*failed\s*\|\s*)?(\d+)\s*passed(?:\s*\|\s*(\d+)\s*skipped)?/i;
+
 const TEST_COMMAND_PATTERNS = [
 	/^npm\s+test\b/,
 	/^pnpm\s+test\b/,
@@ -46,6 +51,14 @@ function isFailureStart(line: string): boolean {
 }
 
 function extractTestStats(output: string): Partial<TestSummary> {
+	const vitestMatch = output.match(VITEST_SUMMARY_PATTERN);
+	if (vitestMatch) {
+		return {
+			failed: Number.parseInt(vitestMatch[1] ?? "0", 10) || 0,
+			passed: Number.parseInt(vitestMatch[2] ?? "0", 10) || 0,
+			skipped: Number.parseInt(vitestMatch[3] ?? "0", 10) || 0,
+		};
+	}
 	for (const pattern of TEST_RESULT_PATTERNS) {
 		const match = output.match(pattern);
 		if (!match) {
@@ -64,7 +77,11 @@ export function isTestCommand(command: string | undefined | null): boolean {
 	return matchesCommandPatterns(command, TEST_COMMAND_PATTERNS);
 }
 
-export function aggregateTestOutput(output: string, command: string | undefined | null): string | null {
+export function aggregateTestOutput(
+	output: string,
+	command: string | undefined | null,
+	isError?: boolean,
+): string | null {
 	if (!isTestCommand(command)) {
 		return null;
 	}
@@ -142,6 +159,11 @@ export function aggregateTestOutput(output: string, command: string | undefined 
 	}
 
 	const result: string[] = ["Test Results:"];
+	if (isError && summary.failed === 0) {
+		result.push(
+			"   \u26a0 Command exited with a failure status but no failures were parsed from output - do NOT trust "0 failed"; treat this run as FAILED and check raw output.",
+		);
+	}
 	result.push(`   PASS: ${summary.passed} passed`);
 	if (summary.failed > 0) {
 		result.push(`   FAIL: ${summary.failed} failed`);

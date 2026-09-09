@@ -516,6 +516,7 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 				{
 					toolName: event.toolName,
 					input: event.input,
+					isError: event.isError,
 					content: event.content,
 				},
 				config,
