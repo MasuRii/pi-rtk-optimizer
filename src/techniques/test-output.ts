@@ -161,7 +161,7 @@ export function aggregateTestOutput(
 	const result: string[] = ["Test Results:"];
 	if (isError && summary.failed === 0) {
 		result.push(
-			"   \u26a0 Command exited with a failure status but no failures were parsed from output - do NOT trust "0 failed"; treat this run as FAILED and check raw output.",
+			"   WARNING: Command exited with a failure status but no failures were parsed from output - do NOT trust '0 failed'; treat this run as FAILED and check raw output.",
 		);
 	}
 	result.push(`   PASS: ${summary.passed} passed`);
