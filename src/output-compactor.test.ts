@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { truncate } from "./techniques/truncate.ts";
 
 import { cloneDefaultConfig, mock, runTest } from "./test-helpers.test.ts";
 
@@ -631,6 +632,54 @@ runTest("quoted hook warning text is preserved as payload", () => {
 	assert.equal(result.changed, false);
 	assert.equal(result.content, undefined);
 	assert.deepEqual(result.techniques, []);
+});
+
+runTest("hard truncation keeps both ends within the character budget", () => {
+	const text = "BEGIN\n" + "x".repeat(20_000) + "\nFINAL ERROR\nCommand exited with code 7";
+	for (const maxChars of [1_000, 1_001, 12_000]) {
+		const compacted = truncate(text, maxChars);
+		assert.equal(compacted.length, maxChars);
+		assert.ok(compacted.startsWith("BEGIN\n"));
+		assert.ok(compacted.endsWith("FINAL ERROR\nCommand exited with code 7"));
+		assert.ok(compacted.includes("[RTK truncated middle]"));
+	}
+});
+
+runTest("hard truncation keeps exact output at or below the budget", () => {
+	assert.equal(truncate("", 1_000), "");
+	assert.equal(truncate("unchanged", 1_000), "unchanged");
+	assert.equal(truncate("x".repeat(1_000), 1_000), "x".repeat(1_000));
+});
+
+runTest("hard truncation handles budgets too small for the middle marker", () => {
+	const text = "x".repeat(200);
+	for (let maxChars = 3; maxChars <= 40; maxChars += 1) {
+		assert.equal(truncate(text, maxChars).length, maxChars);
+	}
+	assert.equal(truncate(text, 2), "...");
+});
+
+runTest("bash compaction preserves final failure and existing log reference with truncation metadata", () => {
+	const config = cloneDefaultConfig();
+	config.outputCompaction.trackSavings = false;
+	config.outputCompaction.truncate.maxChars = 12_000;
+	const suffix = "\nFINAL_FAILURE_MARKER\nFull output: /tmp/rtk-probe.log\nCommand exited with code 7";
+	const text = "BEGIN PROBE\n".padEnd(19_849 - suffix.length, "x") + suffix;
+	const result = compactToolResult({
+		toolName: "bash",
+		input: { command: "printf probe; exit 7" },
+		content: [{ type: "text", text }],
+	}, config);
+
+	assert.equal(result.changed, true);
+	assert.deepEqual(result.techniques, ["truncate"]);
+	const compacted = firstTextBlock(result.content);
+	assert.ok(compacted.startsWith("BEGIN PROBE\n"));
+	assert.ok(compacted.endsWith(suffix));
+	assert.equal(compacted.length, 12_000);
+	assert.equal(result.metadata?.truncated, true);
+	assert.equal(result.metadata?.originalCharCount, 19_849);
+	assert.equal(result.metadata?.compactedCharCount, 12_000);
 });
 
 console.log("All output-compactor tests passed.");

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Preserve the beginning and end of oversized tool output within the hard character budget, with an `[RTK truncated middle]` marker, so trailing failure evidence and existing full-output references are retained when they fit in the tail.
+
 ## [0.9.0] - 2026-07-03
 
 ### Changed
