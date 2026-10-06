@@ -163,6 +163,8 @@ When `read` output uses Pi hashline/anchor prefixes, the compactor treats each a
 | `outputCompaction.truncate.enabled` | boolean | `true` | — | Enable hard character truncation |
 | `outputCompaction.truncate.maxChars` | number | `12000` | 1000–200000 | Maximum characters in final output |
 
+Hard character truncation keeps the beginning and end of the text, separated by an `[RTK truncated middle]` marker within the character budget. This preserves trailing errors, exit-status text, and existing full-output references when they fit in the retained tail. The omitted middle is not recoverable from the compacted text; this extension does not create a full-output log. Anchor-prefixed reads continue to use the separate anchor-safe truncation described above.
+
 ### Source Code Filtering Levels
 
 | Level | Behavior |
