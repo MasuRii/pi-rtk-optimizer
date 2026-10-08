@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Tool output compaction no longer silently no-ops on pi installs/forks that expose the built-in grep tool under the alias `search` instead of `grep`. Previously, `compactToolResult` only recognized the literal toolName `"grep"`, so `truncate.maxChars`, `smartTruncate`, and `groupSearchOutput` were never applied to `search` tool calls on affected installs — letting a single oversized ripgrep match line (e.g. a minified HTML/JSON file with no line breaks) reach the model uncompacted and spike context usage by hundreds of thousands of tokens in one turn.
+
 ## [0.9.0] - 2026-07-03
 
 ### Changed
