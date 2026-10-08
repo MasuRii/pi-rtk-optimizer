@@ -56,6 +56,20 @@ function compactBashOutput(command: string, text: string): string {
 	return firstTextBlock(result.content);
 }
 
+function compactSearchOutput(text: string): string {
+	const result = compactToolResult(
+		{
+			toolName: "search",
+			input: {},
+			content: [{ type: "text", text }],
+		},
+		cloneDefaultConfig(),
+	);
+
+	assert.equal(result.changed, true);
+	return firstTextBlock(result.content);
+}
+
 function compactGrepOutput(text: string): string {
 	const result = compactToolResult(
 		{
@@ -585,6 +599,21 @@ runTest("search output uses plain-text summary and file markers", () => {
 	assert.ok(compacted.includes("> src/a.ts (1 matches):\n"));
 	assert.ok(compacted.includes("> src/b.ts (1 matches):\n"));
 	assertNoOutputEmoji(compacted);
+});
+
+runTest("toolName 'search' (grep alias used by some pi installs) is compacted same as 'grep'", () => {
+	// Regression for: a single oversized rg match line (minified HTML/JSON with no
+	// line breaks) reached the model uncompacted because this install's grep tool
+	// is registered as "search", and the compactor only recognized "grep",
+	// silently no-op'ing truncation/groupSearchOutput for every search call.
+	const hugeLine = `docs/mockups/huge.html:1: ${"x".repeat(1_200_000)}`;
+	const compacted = compactSearchOutput(hugeLine);
+
+	assert.ok(
+		compacted.length < hugeLine.length,
+		"search tool output must be truncated/compacted, not passed through unchanged",
+	);
+	assert.ok(compacted.length <= cloneDefaultConfig().outputCompaction.truncate.maxChars + 200);
 });
 
 runTest("git diff compaction skips already-compacted RTK-shaped output", () => {
