@@ -229,6 +229,78 @@ runTest("test output fallback counts unicode pass and fail symbols", () => {
 	assert.ok(result?.includes("FAIL: 2 failed"));
 });
 
+runTest("test output trusts node:test summary and ignores fail-open titles", () => {
+	const output = [
+		"✔ depth config fails open on malformed values (1.3ms)",
+		"✔ warn mode collection is fail-open (0.4ms)",
+		"✔ failover chain tries each upstream once (0.2ms)",
+		"ℹ tests 3",
+		"ℹ suites 0",
+		"ℹ pass 3",
+		"ℹ fail 0",
+		"ℹ cancelled 0",
+		"ℹ skipped 0",
+		"ℹ todo 0",
+		"ℹ duration_ms 117.8",
+	].join("\n");
+
+	const result = aggregateTestOutput(output, "npm test");
+
+	assert.ok(result?.includes("PASS: 3 passed"));
+	assert.equal(result?.includes("FAIL"), false);
+});
+
+runTest("test output trusts node:test TAP summary (# pass/# fail)", () => {
+	const output = [
+		"TAP version 13",
+		"ok 1 - depth config fails open",
+		"not ok 2 - failover chain",
+		"1..2",
+		"# tests 2",
+		"# pass 1",
+		"# fail 1",
+	].join("\n");
+
+	const result = aggregateTestOutput(output, "npm test");
+
+	assert.ok(result?.includes("PASS: 1 passed"));
+	assert.ok(result?.includes("FAIL: 1 failed"));
+});
+
+runTest("test output surfaces the real failure name from node:test spec output", () => {
+	const output = [
+		"✔ depth config fails open with defaults (1.3ms)",
+		"✖ rejects malformed config (1.5ms)",
+		"ℹ tests 2",
+		"ℹ suites 0",
+		"ℹ pass 1",
+		"ℹ fail 1",
+		"ℹ cancelled 0",
+		"ℹ skipped 0",
+		"ℹ todo 0",
+		"ℹ duration_ms 117.8",
+		"",
+		"✖ failing tests:",
+		"",
+		"test at src/config.test.ts:42:1",
+		"✖ rejects malformed config (1.5ms)",
+		"  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+		"  1 !== 2",
+	].join("\n");
+
+	const result = aggregateTestOutput(output, "npm test");
+
+	assert.ok(result?.includes("FAIL: 1 failed"));
+	assert.ok(result?.includes("rejects malformed config"));
+});
+
+runTest("test output fallback ignores prose and titles containing fail-open", () => {
+	const result = aggregateTestOutput("✔ depth config fails open on malformed values\n✔ failover retries once\n", "npm test");
+
+	assert.ok(result?.includes("PASS: 2 passed"));
+	assert.equal(result?.includes("FAIL"), false);
+});
+
 runTest("command detection ignores env prefixes, blank lines, and chained suffixes", () => {
 	assert.equal(normalizeCommandForDetection("NODE_ENV=test FOO=bar npm test && echo done"), "npm test");
 	assert.equal(normalizeCommandForDetection("\n\n PYTHONPATH=src git status\n echo later"), "git status");

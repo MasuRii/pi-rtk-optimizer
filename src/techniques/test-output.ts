@@ -35,17 +35,66 @@ const FAILURE_START_PATTERNS = [
 	/^FAILED\s+/,
 	/^\s*●\s+/,
 	/^\s*✕\s+/,
+	/^\s*✖\s+(?!failing tests:)/,
 	/test\s+\w+\s+\.\.\.\s*FAILED/,
 	/thread\s+'\w+'\s+panicked/,
 ];
 const FALLBACK_PASS_PATTERN = /(?:\b(?:ok|PASS)\b|[✓✔])/;
-const FALLBACK_FAIL_PATTERN = /(?:\b(?:FAIL|fail)\b|[✗✕])/;
+const FALLBACK_FAIL_PATTERN = /^\s*(?:[✗✖✕❌]|(?:FAIL|FAILED)\b)/;
+
+// node:test prints an authoritative summary block for every reporter: the
+// spec and dot reporters prefix it with "ℹ", the TAP reporter with "#". Its
+// counts are the ground truth, so the line-scanning fallback must be skipped
+// entirely whenever it is present (a green title such as "fails open" must
+// never be counted as a failed test).
+const NODE_TEST_SUMMARY_LINE = /^\s*(?:ℹ|#)\s*(tests|pass|fail|cancelled|skipped|todo)\s+(\d+)\s*$/;
 
 function isFailureStart(line: string): boolean {
 	return FAILURE_START_PATTERNS.some((pattern) => pattern.test(line));
 }
 
-function extractTestStats(output: string): Partial<TestSummary> {
+function extractNodeTestSummary(output: string): Partial<TestSummary> | null {
+	let passed: number | undefined;
+	let failed: number | undefined;
+	let skipped: number | undefined;
+
+	for (const line of output.split("\n")) {
+		const match = NODE_TEST_SUMMARY_LINE.exec(line);
+		if (!match) {
+			continue;
+		}
+		switch (match[1]) {
+			case "pass":
+				passed = Number.parseInt(match[2] ?? "0", 10);
+				break;
+			case "fail":
+				failed = Number.parseInt(match[2] ?? "0", 10);
+				break;
+			case "skipped":
+				skipped = Number.parseInt(match[2] ?? "0", 10);
+				break;
+			default:
+				break;
+		}
+	}
+
+	if (passed === undefined && failed === undefined) {
+		return null;
+	}
+
+	return {
+		passed: passed ?? 0,
+		failed: failed ?? 0,
+		skipped: skipped ?? 0,
+	};
+}
+
+function extractTestStats(output: string): Partial<TestSummary> | null {
+	const nodeSummary = extractNodeTestSummary(output);
+	if (nodeSummary) {
+		return nodeSummary;
+	}
+
 	for (const pattern of TEST_RESULT_PATTERNS) {
 		const match = output.match(pattern);
 		if (!match) {
@@ -57,7 +106,7 @@ function extractTestStats(output: string): Partial<TestSummary> {
 			skipped: Number.parseInt(match[3] ?? "0", 10) || 0,
 		};
 	}
-	return {};
+	return null;
 }
 
 export function isTestCommand(command: string | undefined | null): boolean {
@@ -78,11 +127,11 @@ export function aggregateTestOutput(output: string, command: string | undefined 
 	};
 
 	const stats = extractTestStats(output);
-	summary.passed = stats.passed ?? 0;
-	summary.failed = stats.failed ?? 0;
-	summary.skipped = stats.skipped ?? 0;
-
-	if (summary.passed === 0 && summary.failed === 0) {
+	if (stats) {
+		summary.passed = stats.passed ?? 0;
+		summary.failed = stats.failed ?? 0;
+		summary.skipped = stats.skipped ?? 0;
+	} else {
 		for (const line of lines) {
 			if (FALLBACK_PASS_PATTERN.test(line)) {
 				summary.passed++;
