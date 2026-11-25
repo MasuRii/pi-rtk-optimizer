@@ -1,7 +1,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { SettingItem } from "@earendil-works/pi-tui";
 import { toOnOff } from "./boolean-format.js";
 import type { RtkIntegrationController } from "./command-register.js";
+import type { SettingItem } from "./settings-list.js";
 import { ZellijModal, ZellijSettingsModal } from "./zellij-modal.js";
 import {
 	DEFAULT_RTK_INTEGRATION_CONFIG,

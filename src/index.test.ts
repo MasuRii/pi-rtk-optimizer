@@ -5,29 +5,7 @@ import { mock, runTest } from "./test-helpers.test.ts";
 mock.module("@earendil-works/pi-coding-agent", {
 	namedExports: {
 		getAgentDir: () => "/tmp/.pi/agent",
-		getSettingsListTheme: () => ({}),
 		isToolCallEventType: (toolName: string, event: Record<string, unknown>) => event.toolName === toolName,
-	},
-});
-
-mock.module("@earendil-works/pi-tui", {
-	namedExports: {
-		Box: class {},
-		Container: class {
-			addChild(): void {}
-			render(): string[] {
-				return [];
-			}
-			invalidate(): void {}
-		},
-		SettingsList: class {
-			handleInput(): void {}
-			updateValue(): void {}
-		},
-		Spacer: class {},
-		Text: class {},
-		truncateToWidth: (text: string) => text,
-		visibleWidth: (text: string) => text.length,
 	},
 });
 

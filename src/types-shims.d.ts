@@ -1,49 +1,5 @@
-declare module "@earendil-works/pi-tui" {
-	export interface SettingItem {
-		id: string;
-		label: string;
-		description: string;
-		currentValue: string;
-		values: string[];
-	}
-
-	export interface AutocompleteItem {
-		value: string;
-		label: string;
-		description?: string;
-	}
-
-	export class Box {
-		constructor(...args: unknown[]);
-		addChild(child: unknown): void;
-	}
-
-	export class Container {
-		constructor(...args: unknown[]);
-		addChild(child: unknown): void;
-		render(width: number): string[];
-		invalidate(): void;
-	}
-
-	export class SettingsList {
-		constructor(...args: unknown[]);
-		render(width: number): string[];
-		invalidate(): void;
-		handleInput(data: string): void;
-		updateValue(id: string, value: string): void;
-	}
-
-	export class Spacer {
-		constructor(...args: unknown[]);
-	}
-
-	export class Text {
-		constructor(...args: unknown[]);
-	}
-
-	export function truncateToWidth(text: string, width: number, suffix?: string, pad?: boolean): string;
-	export function visibleWidth(text: string): number;
-}
+/** Bun runtime global (omp runs extensions under Bun). */
+declare const Bun: { stringWidth(text: string): number };
 
 declare module "@earendil-works/pi-coding-agent" {
 	interface UiLike {
@@ -92,7 +48,6 @@ declare module "@earendil-works/pi-coding-agent" {
 	}
 
 	export function getAgentDir(): string;
-	export function getSettingsListTheme(): unknown;
 
 	export interface ExtensionAPI {
 		exec(

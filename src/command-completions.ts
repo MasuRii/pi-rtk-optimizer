@@ -1,4 +1,9 @@
-import type { AutocompleteItem } from "@earendil-works/pi-tui";
+/** The item shape pi's command argument completions return. */
+interface AutocompleteItem {
+	value: string;
+	label: string;
+	description?: string;
+}
 
 interface CompletionDefinition {
 	name: string;

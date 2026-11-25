@@ -5,37 +5,6 @@ import { cloneDefaultConfig, mock, runTest } from "./test-helpers.test.ts";
 mock.module("@earendil-works/pi-coding-agent", {
 	namedExports: {
 		getAgentDir: () => "/tmp/.pi/agent",
-		getSettingsListTheme: () => ({}),
-	},
-});
-
-const settingsListInputs: string[] = [];
-const settingsListUpdates: Array<{ id: string; value: string }> = [];
-
-mock.module("@earendil-works/pi-tui", {
-	namedExports: {
-		Box: class {
-			addChild(): void {}
-		},
-		Container: class {
-			addChild(): void {}
-			render(): string[] {
-				return ["settings-content"];
-			}
-			invalidate(): void {}
-		},
-		SettingsList: class {
-			handleInput(data: string): void {
-				settingsListInputs.push(data);
-			}
-			updateValue(id: string, value: string): void {
-				settingsListUpdates.push({ id, value });
-			}
-		},
-		Spacer: class {},
-		Text: class {},
-		truncateToWidth: (text: string, width: number) => text.slice(0, width),
-		visibleWidth: (text: string) => text.length,
 	},
 });
 
@@ -86,9 +55,9 @@ function createThemeStub(): { fg: (_name: string, text: string) => string; bold:
 	};
 }
 
-runTest("zellij settings modal renders overlay frame and delegates non-enter input", () => {
-	settingsListInputs.length = 0;
-	settingsListUpdates.length = 0;
+runTest("zellij settings modal renders plain rows and handles settings input", () => {
+	const changes: Array<{ id: string; value: string }> = [];
+	let closed = 0;
 	const settingsModal = new ZellijSettingsModal(
 		{
 			title: "RTK Integration Settings",
@@ -100,9 +69,12 @@ runTest("zellij settings modal renders overlay frame and delegates non-enter inp
 					currentValue: "on",
 					values: ["on", "off"],
 				},
+				{ id: "mode", label: "Mode", description: "Rewrite mode", currentValue: "rewrite", values: ["rewrite", "suggest"] },
 			],
-			onChange: () => {},
-			onClose: () => {},
+			onChange: (id, value) => changes.push({ id, value }),
+			onClose: () => {
+				closed += 1;
+			},
 			helpText: "Esc: close",
 		},
 		createThemeStub() as never,
@@ -117,20 +89,66 @@ runTest("zellij settings modal renders overlay frame and delegates non-enter inp
 	});
 
 	const rendered = modal.renderModal(86);
-	settingsModal.handleInput("\r");
-	settingsModal.handleInput("j");
-	settingsModal.updateValue("enabled", "off");
-
 	assert.equal(rendered.visibleWidth, 86);
 	assert.equal(rendered.contentWidth, 82);
 	assert.ok(stripAnsi(rendered.lines[0] ?? "").includes("RTK Integration Settings"));
 	assert.ok(stripAnsi(rendered.lines[rendered.lines.length - 1] ?? "").includes("Esc: close"));
+	assert.ok(rendered.lines.some((line) => /→ Enabled +on/.test(stripAnsi(line))));
+	assert.ok(rendered.lines.some((line) => stripAnsi(line).includes("Enable integration")));
+	for (const width of [20, 40, 86, 120]) {
+		for (const line of modal.renderModal(width).lines) {
+			assert.equal(Bun.stringWidth(line), width, `row width at ${width}: ${JSON.stringify(stripAnsi(line))}`);
+		}
+	}
 	assert.deepEqual(modal.getOverlayOptions(), {
 		overlay: true,
 		overlayOptions: { anchor: "center", width: 86, maxHeight: "85%", margin: 1 },
 	});
-	assert.deepEqual(settingsListInputs, ["j"]);
-	assert.deepEqual(settingsListUpdates, [{ id: "enabled", value: "off" }]);
+
+	settingsModal.handleInput("\r");
+	assert.deepEqual(changes, [], "Enter that opened /rtk must not toggle the first setting");
+	settingsModal.handleInput(" ");
+	assert.deepEqual(changes, [{ id: "enabled", value: "off" }]);
+	settingsModal.handleInput("\x1b[B");
+	settingsModal.handleInput("\x1b[32u");
+	assert.deepEqual(changes[1], { id: "mode", value: "suggest" });
+	settingsModal.updateValue("enabled", "on");
+	assert.ok(settingsModal.render(60).some((line) => /Enabled +on/.test(stripAnsi(line))));
+
+	settingsModal.handleInput("m");
+	settingsModal.handleInput("d");
+	const filtered = settingsModal.render(60).map(stripAnsi);
+	assert.ok(filtered.some((line) => line.startsWith("> md")));
+	assert.ok(filtered.some((line) => /→ Mode +suggest/.test(line)));
+	assert.equal(filtered.some((line) => line.includes("Enabled")), false);
+	settingsModal.handleInput("\x7f");
+	settingsModal.handleInput("\x7f");
+	assert.ok(settingsModal.render(60).some((line) => stripAnsi(line).includes("Enabled")));
+
+	settingsModal.handleInput("\x1b");
+	assert.equal(closed, 1);
+});
+
+runTest("zellij settings modal switches tabs with left/right", () => {
+	const settingsModal = new ZellijSettingsModal(
+		{
+			title: "Tabs",
+			tabs: [
+				{ label: "General", settings: [{ id: "a", label: "Alpha", currentValue: "on", values: ["on", "off"] }] },
+				{ label: "Other", settings: [{ id: "b", label: "Beta", currentValue: "x", values: ["x", "y"] }] },
+			],
+			onChange: () => {},
+			onClose: () => {},
+			helpText: "Config: /tmp/x.json",
+		},
+		createThemeStub() as never,
+	);
+	assert.ok(settingsModal.render(60).map(stripAnsi).includes("[ General ]  Other  "));
+	settingsModal.handleInput("\x1b[C");
+	const lines = settingsModal.render(60).map(stripAnsi);
+	assert.ok(lines.includes("  General  [ Other ]"));
+	assert.ok(lines.some((line) => /→ Beta +x/.test(line)));
+	assert.ok(lines.includes("Config: /tmp/x.json"));
 });
 
 runTest("command completions return top-level and filtered RTK subcommands", () => {

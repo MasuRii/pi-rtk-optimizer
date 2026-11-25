@@ -1,16 +1,8 @@
 // Vendored from ../zellij-modal/index.ts to keep pi-rtk-optimizer standalone.
 // Keep this module in sync when upstream zellij-modal primitives change.
-import { getSettingsListTheme, type ExtensionAPI, type Theme } from "@earendil-works/pi-coding-agent";
-import {
-	Box,
-	Container,
-	SettingsList,
-	Spacer,
-	Text,
-	truncateToWidth,
-	visibleWidth,
-	type SettingItem,
-} from "@earendil-works/pi-tui";
+import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import { truncate as truncateToWidth, visibleWidth } from "./rows.js";
+import { SettingsList, type SettingItem } from "./settings-list.js";
 
 const ANSI_RESET = "\x1b[0m";
 
@@ -810,8 +802,6 @@ export interface SettingsModalOptions {
  * Pre-built Zellij content renderer for configuration modals.
  */
 export class ZellijSettingsModal implements ZellijModalContentRenderer {
-	private container: Container;
-	private contentBox: Box;
 	private settingsList: SettingsList;
 	private options: SettingsModalOptions;
 	private theme: Theme;
@@ -829,31 +819,9 @@ export class ZellijSettingsModal implements ZellijModalContentRenderer {
 		this.showTabs = options.tabs !== undefined && options.tabs.length > 0;
 		this.tabLists = this.showTabs ? options.tabs!.map((tab) => this.createSettingsList(tab.settings, () => this.options.onClose())) : [];
 		this.activeTabIndex = this.normalizeActiveTabIndex(options.activeTabIndex ?? 0);
-		this.container = new Container();
-		this.contentBox = new Box(0, 0);
-
-		if (this.showTabs) {
-			this.settingsList = this.tabLists[this.activeTabIndex] ?? this.tabLists[0]!;
-		} else {
-			this.contentBox.addChild(new Text(this.theme.fg("accent", this.theme.bold(options.title)), 0, 0));
-
-			if (options.description) {
-				this.contentBox.addChild(new Spacer(1));
-				this.contentBox.addChild(new Text(this.theme.fg("muted", options.description), 0, 0));
-			}
-
-			this.contentBox.addChild(new Spacer(1));
-			const fallbackSettings = options.settings ?? [];
-			this.settingsList = this.createSettingsList(fallbackSettings, () => this.options.onClose());
-			this.contentBox.addChild(this.settingsList);
-
-			if (options.helpText) {
-				this.contentBox.addChild(new Spacer(1));
-				this.contentBox.addChild(new Text(this.theme.fg("dim", options.helpText), 0, 0));
-			}
-
-			this.container.addChild(this.contentBox);
-		}
+		this.settingsList = this.showTabs
+			? this.tabLists[this.activeTabIndex] ?? this.tabLists[0]!
+			: this.createSettingsList(options.settings ?? [], () => this.options.onClose());
 	}
 
 	/**
@@ -863,7 +831,7 @@ export class ZellijSettingsModal implements ZellijModalContentRenderer {
 		const safeWidth = Math.max(1, width);
 		try {
 			if (!this.showTabs) {
-				return this.container.render(safeWidth);
+				return this.renderSingleList(safeWidth);
 			}
 
 			const lines: string[] = [];
@@ -896,11 +864,23 @@ export class ZellijSettingsModal implements ZellijModalContentRenderer {
 		}
 	}
 
+	private renderSingleList(width: number): string[] {
+		const lines = [this.theme.fg("accent", this.theme.bold(this.options.title))];
+		if (this.options.description) {
+			lines.push("", this.theme.fg("muted", this.options.description));
+		}
+		lines.push("", ...this.settingsList.render(width));
+		if (this.options.helpText) {
+			lines.push("", this.theme.fg("dim", this.options.helpText));
+		}
+		return lines.map((line) => truncateToWidth(line, width));
+	}
+
 	private createSettingsList(settings: SettingItem[], onCancel: () => void): SettingsList {
 		return new SettingsList(
 			settings,
 			Math.min(Math.max(settings.length + 2, 6), 18),
-			getSettingsListTheme(),
+			this.theme,
 			(id: string, value: string) => {
 				this.options.onChange(id, value);
 			},
@@ -948,12 +928,7 @@ export class ZellijSettingsModal implements ZellijModalContentRenderer {
 	 * Invalidate internal caches.
 	 */
 	invalidate(): void {
-		if (!this.showTabs) {
-			this.container.invalidate();
-			return;
-		}
-
-		for (const list of this.tabLists) {
+		for (const list of this.showTabs ? this.tabLists : [this.settingsList]) {
 			list.invalidate();
 		}
 	}

@@ -271,7 +271,7 @@ Automatic fixes applied on Windows:
 
 ### Dependencies
 
-- **Peer dependencies:** `@earendil-works/pi-coding-agent`, `@earendil-works/pi-tui`
+- **Peer dependency:** `@earendil-works/pi-coding-agent` (the settings modal draws plain rows, so no pi-tui package is needed)
 - **Runtime:** Node.js ≥20, optional `rtk` binary for command rewriting
 - **Development verification:** Node.js ≥24 and npm for Node/tsx test scripts using Node's experimental test module mocks
 
